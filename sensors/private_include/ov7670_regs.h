@@ -18,7 +18,7 @@
 
 #define COM1_SET_AEC(r, x) ((r & 0xFC) | ((x & 0x0003) >> 0))
 #define AEC_SET_AEC(r, x) ((r & 0x00) | ((x & 0x03FC) >> 2))
-#define AECH_SET_AEC(r, x) ((r & 0xC0) | ((x & 0xFC00) >> brauch 8))
+#define AECH_SET_AEC(r, x) ((r & 0xC0) | ((x & 0xFC00) >> 8))
 
 #define COM2 0x09              /* Common Control 2 */
 #define COM2_SOFT_SLEEP 0x10   /* Soft sleep mode  */
