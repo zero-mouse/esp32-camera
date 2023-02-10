@@ -387,10 +387,8 @@ static int set_vflip(sensor_t *sensor, int enable)
     return SCCB_Write(sensor->slv_addr, MVFP, reg);
 }
 
-static int set_exposuretime(sensor_t *sensor, int level)
+static int set_ae_level(sensor_t *sensor, int level)
 {
-
-    // Read register COM1
     uint8_t reg1 = SCCB_Read(sensor->slv_addr, COM1);
     uint8_t reg2 = SCCB_Read(sensor->slv_addr, AEC);
     uint8_t reg3 = SCCB_Read(sensor->slv_addr, AECH);
@@ -399,8 +397,7 @@ static int set_exposuretime(sensor_t *sensor, int level)
     reg2 = AEC_SET_AEC(reg2, (uint16_t)level);
     reg3 = AECH_SET_AEC(reg3, (uint16_t)level);
 
-    return SCCB_Write(sensor->slv_addr, COM1, reg1) && SCCB_Write(sensor->slv_addr, AEC, reg2) && SCCB_Write(sensor->slv_addr, AECH, reg3);
-    // return SCCB_Write(sensor->slv_addr, MVFP, reg);
+    return SCCB_Write(sensor->slv_addr, COM1, reg1) | SCCB_Write(sensor->slv_addr, AEC, reg2) | SCCB_Write(sensor->slv_addr, AECH, reg3);
 }
 
 static int init_status(sensor_t *sensor)
@@ -452,9 +449,7 @@ int ov7670_init(sensor_t *sensor)
     sensor->set_exposure_ctrl = set_exposure_ctrl;
     sensor->set_hmirror = set_hmirror;
     sensor->set_vflip = set_vflip;
-
-    // testing
-    sensor->set_ae_level = set_exposuretime;
+    sensor->set_ae_level = set_ae_level;
 
     // not supported
     sensor->set_brightness = set_dummy;
