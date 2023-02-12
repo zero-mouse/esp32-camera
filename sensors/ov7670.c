@@ -344,7 +344,7 @@ static int set_gain_ctrl(sensor_t *sensor, int enable)
     // Read register COM8
     uint8_t reg = SCCB_Read(sensor->slv_addr, COM8);
 
-    // Set white bal on/off
+    // Set auto gain on/off
     reg = COM8_SET_AGC(reg, enable);
 
     // Write back register COM8
@@ -356,7 +356,7 @@ static int set_exposure_ctrl(sensor_t *sensor, int enable)
     // Read register COM8
     uint8_t reg = SCCB_Read(sensor->slv_addr, COM8);
 
-    // Set white bal on/off
+    // Set auto exposure on/off
     reg = COM8_SET_AEC(reg, enable);
 
     // Write back register COM8
@@ -389,15 +389,26 @@ static int set_vflip(sensor_t *sensor, int enable)
 
 static int set_ae_level(sensor_t *sensor, int level)
 {
-    uint8_t reg1 = SCCB_Read(sensor->slv_addr, COM1);
-    uint8_t reg2 = SCCB_Read(sensor->slv_addr, AEC);
-    uint8_t reg3 = SCCB_Read(sensor->slv_addr, AECH);
+    if (level < 0) level = 0;
+    if (level > UINT16_MAX) level = UINT16_MAX;
 
-    reg1 = COM1_SET_AEC(reg1, (uint16_t)level);
-    reg2 = AEC_SET_AEC(reg2, (uint16_t)level);
-    reg3 = AECH_SET_AEC(reg3, (uint16_t)level);
+    return SCCB_Write(sensor->slv_addr, COM1, COM1_SET_AEC(SCCB_Read(sensor->slv_addr, COM1), (uint16_t) level)) 
+        | SCCB_Write(sensor->slv_addr, AEC, AEC_SET_AEC(SCCB_Read(sensor->slv_addr, AEC), (uint16_t) level)) 
+        | SCCB_Write(sensor->slv_addr, AECH, AECH_SET_AEC(SCCB_Read(sensor->slv_addr, AECH), (uint16_t) level));
+}
 
-    return SCCB_Write(sensor->slv_addr, COM1, reg1) | SCCB_Write(sensor->slv_addr, AEC, reg2) | SCCB_Write(sensor->slv_addr, AECH, reg3);
+static int set_agc_gain(sensor_t *sensor, int gain)
+{
+    if(gain < 1) gain = 1;
+    if(gain > 127) gain = 127;
+
+    // The sensor has 6 fixed gain stages which each double the signal, and a x1 - x2 programable preamp with 16 steps.
+    // High 6 bits toggle the stages, low 4 bits set the preamp factor (minus 1).
+    uint8_t log2 = 31 - __builtin_clz(gain);
+    uint16_t encoded = ((((1 << log2) - 1) & 0x3F) << 4) | ((((gain << 4) / (1 << log2)) - 16) & 0x0F);
+
+    return SCCB_Write(sensor->slv_addr, GAIN, GAIN_SET_GAIN(SCCB_Read(sensor->slv_addr, GAIN), encoded)) 
+        | SCCB_Write(sensor->slv_addr, VREF, VREF_SET_GAIN(SCCB_Read(sensor->slv_addr, VREF), encoded));
 }
 
 static int init_status(sensor_t *sensor)
@@ -450,6 +461,7 @@ int ov7670_init(sensor_t *sensor)
     sensor->set_hmirror = set_hmirror;
     sensor->set_vflip = set_vflip;
     sensor->set_ae_level = set_ae_level;
+    sensor->set_agc_gain = set_agc_gain;
 
     // not supported
     sensor->set_brightness = set_dummy;
@@ -460,12 +472,10 @@ int ov7670_init(sensor_t *sensor)
     sensor->set_aec_value = set_dummy;
     sensor->set_special_effect = set_dummy;
     sensor->set_wb_mode = set_dummy;
-    // sensor->set_ae_level = set_dummy;
     sensor->set_dcw = set_dummy;
     sensor->set_bpc = set_dummy;
     sensor->set_wpc = set_dummy;
     sensor->set_awb_gain = set_dummy;
-    sensor->set_agc_gain = set_dummy;
     sensor->set_raw_gma = set_dummy;
     sensor->set_lenc = set_dummy;
     sensor->set_sharpness = set_dummy;

@@ -6,19 +6,26 @@
  */
 #ifndef __OV7670_REG_REGS_H__
 #define __OV7670_REG_REGS_H__
+
 #define GAIN 0x00 /* AGC – Gain control gain setting  */
+#define GAIN_SET_GAIN(r, x) ((r & 0x00) | ((x & 0x00FF) >> 0))
+
 #define BLUE 0x01 /* AWB – Blue channel gain setting  */
 #define RED 0x02  /* AWB – Red channel gain setting   */
-#define VREF 0x03 /* AWB – Green channel gain setting */
+
+#define VREF 0x03 /* AWB – Gain control high bits gain setting */
+#define VREF_SET_GAIN(r, x) ((r & 0xC0) | ((x & 0x0300) >> 2))
+
 #define COM1 0x04 /* Common Control 1 */
+#define COM1_SET_AEC(r, x) ((r & 0xFC) | ((x & 0x0003) >> 0))
+
 #define BAVG 0x05 /* U/B Average Level   */
 #define GAVG 0x06 /* Y/Gb Average Level  */
-#define AECH 0x07 /* Exposure VAlue - AEC MSB 5 bits  */
-#define RAVG 0x08 /* V/R Average Level */
 
-#define COM1_SET_AEC(r, x) ((r & 0xFC) | ((x & 0x0003) >> 0))
-#define AEC_SET_AEC(r, x) ((r & 0x00) | ((x & 0x03FC) >> 2))
+#define AECH 0x07 /* Exposure VAlue - AEC MSB 5 bits  */
 #define AECH_SET_AEC(r, x) ((r & 0xC0) | ((x & 0xFC00) >> 8))
+
+#define RAVG 0x08 /* V/R Average Level */
 
 #define COM2 0x09              /* Common Control 2 */
 #define COM2_SOFT_SLEEP 0x10   /* Soft sleep mode  */
@@ -63,6 +70,8 @@
 #define COM6_AUTO_WINDOW 0x01 /* Auto window setting ON/OFF selection when format changes */
 
 #define AEC 0x10   /* AEC[7:0] (see register AECH for AEC[15:8]) */
+#define AEC_SET_AEC(r, x) ((r & 0x00) | ((x & 0x03FC) >> 2))
+
 #define CLKRC 0x11 /* Internal Clock */
 
 #define COM7 0x12             /* Common Control 7         */
