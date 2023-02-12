@@ -399,13 +399,13 @@ static int set_ae_level(sensor_t *sensor, int level)
 
 static int set_agc_gain(sensor_t *sensor, int gain)
 {
-    if(gain < 1) gain = 1;
-    if(gain > 127) gain = 127;
+    if(gain < 16) gain = 16;
+    if(gain > 2032) gain = 2032;
 
     // The sensor has 6 fixed gain stages which each double the signal, and a x1 - x2 programable preamp with 16 steps.
     // High 6 bits toggle the stages, low 4 bits set the preamp factor (minus 1).
-    uint8_t log2 = 31 - __builtin_clz(gain);
-    uint16_t encoded = ((((1 << log2) - 1) & 0x3F) << 4) | ((((gain << 4) / (1 << log2)) - 16) & 0x0F);
+    uint8_t log2 = 31 - __builtin_clz(gain >> 4);
+    uint16_t encoded = ((((1 << log2) - 1) & 0x3F) << 4) | (((gain / (1 << log2)) - 16) & 0x0F);
 
     return SCCB_Write(sensor->slv_addr, GAIN, GAIN_SET_GAIN(SCCB_Read(sensor->slv_addr, GAIN), encoded)) 
         | SCCB_Write(sensor->slv_addr, VREF, VREF_SET_GAIN(SCCB_Read(sensor->slv_addr, VREF), encoded));
