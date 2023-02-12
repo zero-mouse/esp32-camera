@@ -402,7 +402,7 @@ static int set_agc_gain(sensor_t *sensor, int gain)
     if(gain < 16) gain = 16;
     if(gain > 2032) gain = 2032;
 
-    // The sensor has 6 fixed gain stages which each double the signal, and a x1 - x2 programable preamp with 16 steps.
+    // The sensor has 6 fixed commutative gain stages which each double the signal, and a x1 - x2 programable preamp with 16 steps.
     // High 6 bits toggle the stages, low 4 bits set the preamp factor (minus 1).
     uint8_t log2 = 31 - __builtin_clz(gain >> 4);
     uint16_t encoded = ((((1 << log2) - 1) & 0x3F) << 4) | (((gain / (1 << log2)) - 16) & 0x0F);
