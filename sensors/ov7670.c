@@ -329,14 +329,16 @@ static int set_colorbar(sensor_t *sensor, int enable)
 
 static int set_whitebal(sensor_t *sensor, int enable)
 {
-    // Read register COM8
-    uint8_t reg = SCCB_Read(sensor->slv_addr, COM8);
+    // Read register COM8 and COM16
+    uint8_t reg8 = SCCB_Read(sensor->slv_addr, COM8);
+    uint8_t reg16 = SCCB_Read(sensor->slv_addr, COM16);
 
-    // Set white bal on/off
-    reg = COM8_SET_AWB(reg, enable);
+    // Set auto white bal on/off, and enable wb gain
+    reg8 = COM8_SET_AWB(reg8, enable);
+    reg16 = COM16_SET_AWBGAIN(reg16, 1);
 
-    // Write back register COM8
-    return SCCB_Write(sensor->slv_addr, COM8, reg);
+    // Write back register COM8 and COM16
+    return SCCB_Write(sensor->slv_addr, COM8, reg8) | SCCB_Write(sensor->slv_addr, COM16, reg16);
 }
 
 static int set_gain_ctrl(sensor_t *sensor, int enable)
@@ -411,6 +413,18 @@ static int set_agc_gain(sensor_t *sensor, int gain)
         | SCCB_Write(sensor->slv_addr, VREF, VREF_SET_GAIN(SCCB_Read(sensor->slv_addr, VREF), encoded));
 }
 
+static int set_awb_gain(sensor_t *sensor, int gain)
+{
+    uint8_t blue = ((gain >> 0) & 0xFF);
+    if(blue < 0x40) blue = 0x40;
+    uint8_t red = ((gain >> 8) & 0xFF);
+    if(red < 0x40) red = 0x40;
+    uint8_t green = ((gain >> 16) & 0xFF);
+    if(green < 0x40) green = 0x40;
+
+    return SCCB_Write(sensor->slv_addr, BLUE, blue) | SCCB_Write(sensor->slv_addr, RED, red) | SCCB_Write(sensor->slv_addr, GREEN, green);
+}
+
 static int init_status(sensor_t *sensor)
 {
     sensor->status.awb = 0;
@@ -462,6 +476,7 @@ int ov7670_init(sensor_t *sensor)
     sensor->set_vflip = set_vflip;
     sensor->set_ae_level = set_ae_level;
     sensor->set_agc_gain = set_agc_gain;
+    sensor->set_awb_gain = set_awb_gain;
 
     // not supported
     sensor->set_brightness = set_dummy;
@@ -475,7 +490,6 @@ int ov7670_init(sensor_t *sensor)
     sensor->set_dcw = set_dummy;
     sensor->set_bpc = set_dummy;
     sensor->set_wpc = set_dummy;
-    sensor->set_awb_gain = set_dummy;
     sensor->set_raw_gma = set_dummy;
     sensor->set_lenc = set_dummy;
     sensor->set_sharpness = set_dummy;

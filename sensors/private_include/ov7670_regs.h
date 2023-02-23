@@ -194,6 +194,8 @@
 
 #define COM16 0x41         /* Common Control 16 DIFFERENT CONTROLS */
 #define COM16_AWBGAIN 0x08 /* AWB gain enable */
+#define COM16_SET_AWBGAIN(r, x) ((r & 0xF7) | ((x & 0x1) << 3))
+
 #define COM17 0x42         /* Common Control 17   */
 
 #define AWBC1 0x43 /* Reserved */
@@ -243,7 +245,7 @@
 #define MANU 0x67  /* Manual U Value      */
 #define MANV 0x68  /* Manual V Value */
 #define GFIX 0x69  /* Fix gain control */
-#define GGAIN 0x6A /* G channel AWB gain */
+#define GREEN 0x6A /* G channel AWB gain */
 
 #define DBLV 0x6B /* PLL and clock ? */
 
