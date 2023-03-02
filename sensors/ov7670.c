@@ -442,6 +442,14 @@ static int set_gainceiling(sensor_t *sensor, gainceiling_t val) {
     return SCCB_Write(sensor->slv_addr, COM9, COM9_SET_AGCMAX(SCCB_Read(sensor->slv_addr, COM9), (uint8_t) val));
 }
 
+static int set_exposure_czone(sensor_t *sensor, int min, int max) {
+    return SCCB_Write(sensor->slv_addr, AEW, (uint8_t) max) | SCCB_Write(sensor->slv_addr, AEB, (uint8_t) min);
+}
+
+static int set_exposure_szone(sensor_t *sensor, int min, int max) {
+    return SCCB_Write(sensor->slv_addr, VPT, (uint8_t) ((max & 0xF0) | ((min & 0xF0) >> 4)));
+}
+
 static int init_status(sensor_t *sensor)
 {
     sensor->status.awb = 0;
@@ -497,6 +505,9 @@ int ov7670_init(sensor_t *sensor)
 
     sensor->get_agc_gain = get_agc_gain;
     sensor->get_ae_level = get_ae_level;
+
+    sensor->set_exposure_czone = set_exposure_czone;
+    sensor->set_exposure_szone = set_exposure_szone;
 
     // not supported
     sensor->set_brightness = set_dummy;
