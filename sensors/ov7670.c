@@ -399,6 +399,13 @@ static int set_ae_level(sensor_t *sensor, int level)
         | SCCB_Write(sensor->slv_addr, AECH, AECH_SET_AEC(SCCB_Read(sensor->slv_addr, AECH), (uint16_t) level));
 }
 
+static int get_ae_level(sensor_t *sensor)
+{
+    return UINT16_MAX & ((SCCB_Read(sensor->slv_addr, COM1) & 0x03)
+        | (SCCB_Read(sensor->slv_addr, AEC) << 2)
+        | ((SCCB_Read(sensor->slv_addr, AECH) & 0x3F) << 10));
+}
+
 static int set_agc_gain(sensor_t *sensor, int gain)
 {
     if(gain < 16) gain = 16;
@@ -411,6 +418,12 @@ static int set_agc_gain(sensor_t *sensor, int gain)
 
     return SCCB_Write(sensor->slv_addr, GAIN, GAIN_SET_GAIN(SCCB_Read(sensor->slv_addr, GAIN), encoded)) 
         | SCCB_Write(sensor->slv_addr, VREF, VREF_SET_GAIN(SCCB_Read(sensor->slv_addr, VREF), encoded));
+}
+
+static int get_agc_gain(sensor_t *sensor)
+{
+    uint16_t encoded = SCCB_Read(sensor->slv_addr, GAIN) | ((SCCB_Read(sensor->slv_addr, VREF) & 0xC0) << 2);
+    return ((encoded & 0x0F) + 16) * (1 << __builtin_popcount(encoded & 0x3F0));
 }
 
 static int set_awb_gain(sensor_t *sensor, int gain)
@@ -477,6 +490,9 @@ int ov7670_init(sensor_t *sensor)
     sensor->set_ae_level = set_ae_level;
     sensor->set_agc_gain = set_agc_gain;
     sensor->set_awb_gain = set_awb_gain;
+
+    sensor->get_agc_gain = get_agc_gain;
+    sensor->get_ae_level = get_ae_level;
 
     // not supported
     sensor->set_brightness = set_dummy;
