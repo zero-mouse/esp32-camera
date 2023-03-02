@@ -438,6 +438,10 @@ static int set_awb_gain(sensor_t *sensor, int gain)
     return SCCB_Write(sensor->slv_addr, BLUE, blue) | SCCB_Write(sensor->slv_addr, RED, red) | SCCB_Write(sensor->slv_addr, GREEN, green);
 }
 
+static int set_gainceiling(sensor_t *sensor, gainceiling_t val) {
+    return SCCB_Write(sensor->slv_addr, COM9, COM9_SET_AGCMAX(SCCB_Read(sensor->slv_addr, COM9), (uint8_t) val));
+}
+
 static int init_status(sensor_t *sensor)
 {
     sensor->status.awb = 0;
@@ -450,7 +454,6 @@ static int init_status(sensor_t *sensor)
 }
 
 static int set_dummy(sensor_t *sensor, int val) { return -1; }
-static int set_gainceiling_dummy(sensor_t *sensor, gainceiling_t val) { return -1; }
 
 int ov7670_detect(int slv_addr, sensor_id_t *id)
 {
@@ -490,6 +493,7 @@ int ov7670_init(sensor_t *sensor)
     sensor->set_ae_level = set_ae_level;
     sensor->set_agc_gain = set_agc_gain;
     sensor->set_awb_gain = set_awb_gain;
+    sensor->set_gainceiling = set_gainceiling;
 
     sensor->get_agc_gain = get_agc_gain;
     sensor->get_ae_level = get_ae_level;
@@ -498,7 +502,6 @@ int ov7670_init(sensor_t *sensor)
     sensor->set_brightness = set_dummy;
     sensor->set_saturation = set_dummy;
     sensor->set_quality = set_dummy;
-    sensor->set_gainceiling = set_gainceiling_dummy;
     sensor->set_aec2 = set_dummy;
     sensor->set_aec_value = set_dummy;
     sensor->set_special_effect = set_dummy;
