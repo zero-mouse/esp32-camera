@@ -23,7 +23,7 @@
 #define GAVG 0x06 /* Y/Gb Average Level  */
 
 #define AECH 0x07 /* Exposure VAlue - AEC MSB 5 bits  */
-#define AECH_SET_AEC(r, x) ((r & 0xC0) | ((x & 0xFC00) >> 8))
+#define AECH_SET_AEC(r, x) ((r & 0xC0) | ((x & 0xFC00) >> 10))
 
 #define RAVG 0x08 /* V/R Average Level */
 
