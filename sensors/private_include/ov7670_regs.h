@@ -105,15 +105,7 @@
 #define COM8_SET_AEC(r, x) ((r & 0xFE) | ((x & 0x1) << 0))
 
 #define COM9 0x14              /* Common Control 9 */
-#define COM9_HISTO_AVG 0x80    /* Histogram or average based AEC/AGC selection */
-#define COM9_AGC_GAIN_2x 0x00  /* Automatic Gain Ceiling 2x  */
-#define COM9_AGC_GAIN_4x 0x10  /* Automatic Gain Ceiling 4x  */
-#define COM9_AGC_GAIN_8x 0x20  /* Automatic Gain Ceiling 8x  */
-#define COM9_AGC_GAIN_16x 0x30 /* Automatic Gain Ceiling 16x */
-#define COM9_AGC_GAIN_32x 0x40 /* Automatic Gain Ceiling 32x */
-#define COM9_DROP_VSYNC 0x04   /* Drop VSYNC output of corrupt frame */
-#define COM9_DROP_HREF 0x02    /* Drop HREF output of corrupt frame  */
-#define COM9_SET_AGC(r, x) ((r & 0x8F) | ((x & 0x07) << 4))
+#define COM9_SET_AGCMAX(r, x) ((r & 0x8F) | ((x & 0x07) << 4))
 
 #define COM10 0x15               /* Common Control 10 */
 #define COM10_NEGATIVE 0x80      /* Output negative data */
