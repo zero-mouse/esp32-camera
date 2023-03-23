@@ -189,6 +189,10 @@
 #define COM16_SET_AWBGAIN(r, x) ((r & 0xF7) | ((x & 0x1) << 3))
 
 #define COM17 0x42         /* Common Control 17   */
+#define COM17_AEC_FULL 0x00   /* AEC evaluate full window */
+#define COM17_AEC_1_2 0x40    /* AEC evaluate 1/2 window  */
+#define COM17_AEC_1_4 0x80    /* AEC evaluate 1/4 window  */
+#define COM17_AEC_2_3 0xC0    /* AEC evaluate 2/3 window  */
 
 #define AWBC1 0x43 /* Reserved */
 #define AWBC2 0x44 /* Reserved */

@@ -299,7 +299,7 @@ esp_err_t esp_camera_init(const camera_config_t *config)
         frame_size = camera_sensor[camera_model].max_size;
     }
 
-    err = cam_config(config, frame_size, s_state->sensor.id.PID);
+    err = cam_config(config, frame_size, &(s_state->sensor));
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Camera config failed with error 0x%x", err);
         goto fail;
