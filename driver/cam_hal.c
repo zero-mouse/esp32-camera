@@ -471,7 +471,7 @@ void cam_start(void)
     ll_cam_vsync_intr_enable(cam_obj, true);
 }
 
-camera_fb_t *cam_take(TickType_t timeout)
+camera_fb_t *cam_take(TickType_t timeout, uint8_t iterations)
 {
     camera_fb_t *dma_buffer = NULL;
     TickType_t start = xTaskGetTickCount();
@@ -487,7 +487,11 @@ camera_fb_t *cam_take(TickType_t timeout)
             } else {
                 ESP_LOGW(TAG, "NO-EOI");
                 cam_give(dma_buffer);
-                return cam_take(timeout - (xTaskGetTickCount() - start));//recurse!!!!
+                if(iterations < 3) {
+                    return cam_take(timeout - (xTaskGetTickCount() - start), iterations + 1);//recurse!!!!
+                } else {
+                    ESP_LOGW(TAG, "NO-EOI occurred 3 times, aborting.");
+                }
             }
         } else if(cam_obj->psram_mode && cam_obj->in_bytes_per_pixel != cam_obj->fb_bytes_per_pixel){
             //currently this is used only for YUV to GRAYSCALE
