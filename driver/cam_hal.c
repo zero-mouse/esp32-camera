@@ -171,7 +171,7 @@ static void cam_task(void *arg)
                 {
                     if (cam_obj->fb_size < (frame_buffer_event->len + pixels_per_dma))
                     {
-                        ESP_LOGW(TAG, "FB-OVF");
+                        // ESP_LOGW(TAG, "FB-OVF A %d, %d, %d", cam_obj->fb_size, frame_buffer_event->len, pixels_per_dma);
                         ll_cam_stop(cam_obj);
                         DBG_PIN_SET(0);
                         continue;
@@ -202,7 +202,7 @@ static void cam_task(void *arg)
                         {
                             if (cam_obj->fb_size < (frame_buffer_event->len + pixels_per_dma))
                             {
-                                ESP_LOGW(TAG, "FB-OVF");
+                                ESP_LOGW(TAG, "FB-OVF B");
                                 cnt--;
                             }
                             else
