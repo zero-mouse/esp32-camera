@@ -129,7 +129,6 @@ static struct regval_list ov7670_vga[] = {
 };
 
 static struct regval_list ov7670_qvga[] = {
-    {COM7, 0x10},
     {COM3, 0x04},
     {COM14, 0x19},
     {SCALING_XSC, 0x3A},
@@ -279,7 +278,7 @@ static int set_framesize(sensor_t *sensor, framesize_t framesize)
         if ((ret = ov7670_write_array(sensor, ov7670_qvga)) == 0)
         {
             /* These values from Omnivision */
-            ret = ov7670_frame_control(sensor, 158, 14, 10, 490);
+            ret = ov7670_frame_control(sensor, 150, 150 + (320), 12, 12 + (240 * 2));
         }
         break;
     case FRAMESIZE_224X224:
