@@ -49,7 +49,8 @@ static struct regval_list ov7670_default_regs[] = {
     {COM10, COM10_VSYNC_NEG | COM10_PCLK_FREE},
 
     /* Improve white balance */
-    {COM4, 0x40},
+    {COM4, 0x40 | COM4_AEC_1_4},
+    {COM17, COM17_AEC_1_4},
 
     /* Improve color */
     {RSVD_B0, 0x84},
