@@ -370,7 +370,7 @@ esp_err_t cam_config(const camera_config_t *config, framesize_t frame_size, sens
 
     ret = ll_cam_set_sample_mode(cam_obj, (pixformat_t)config->pixel_format, config->xclk_freq_hz, sensor_obj->id.PID);
     CAM_CHECK_GOTO(ret == ESP_OK, "ll_cam_set_sample_mode failed", err);
-    
+
     cam_obj->jpeg_mode = config->pixel_format == PIXFORMAT_JPEG;
 #if CONFIG_IDF_TARGET_ESP32
     cam_obj->psram_mode = false;
@@ -481,7 +481,7 @@ void cam_start(void)
     ll_cam_vsync_intr_enable(cam_obj, true);
 }
 
-camera_fb_t *cam_take(TickType_t timeout)
+camera_fb_t *cam_take(TickType_t timeout, uint8_t iterations)
 {
     camera_fb_t *dma_buffer = NULL;
     TickType_t start = xTaskGetTickCount();
@@ -507,11 +507,11 @@ camera_fb_t *cam_take(TickType_t timeout)
             } else {
                 ESP_LOGW(TAG, "NO-EOI");
                 cam_give(dma_buffer);
-                TickType_t ticks_spent = xTaskGetTickCount() - start;
-                if (ticks_spent >= timeout) {
-                    return NULL; /* We are out of time */
+                if(iterations < 3) {
+                    return cam_take(timeout - (xTaskGetTickCount() - start), iterations + 1);//recurse!!!!
+                } else {
+                    ESP_LOGW(TAG, "NO-EOI occurred 3 times, aborting.");
                 }
-                return cam_take(timeout - ticks_spent);//recurse!!!!
             }
         } else if(cam_obj->psram_mode && cam_obj->in_bytes_per_pixel != cam_obj->fb_bytes_per_pixel){
             //currently this is used only for YUV to GRAYSCALE

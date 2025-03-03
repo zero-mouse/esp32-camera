@@ -51,7 +51,7 @@ void cam_stop(void);
 
 void cam_start(void);
 
-camera_fb_t *cam_take(TickType_t timeout);
+camera_fb_t *cam_take(TickType_t timeout, uint8_t iterations);
 
 void cam_give(camera_fb_t *dma_buffer);
 

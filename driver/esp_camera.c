@@ -369,7 +369,7 @@ camera_fb_t *esp_camera_fb_get()
     if (s_state == NULL) {
         return NULL;
     }
-    camera_fb_t *fb = cam_take(FB_GET_TIMEOUT);
+    camera_fb_t *fb = cam_take(FB_GET_TIMEOUT, 0);
     //set the frame properties
     if (fb) {
         fb->width = resolution[s_state->sensor.status.framesize].width;
