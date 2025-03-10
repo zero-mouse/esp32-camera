@@ -33,7 +33,8 @@ static const char *TAG = "gc032a";
 #define H8(v) ((v)>>8)
 #define L8(v) ((v)&0xff)
 
-//#define REG_DEBUG_ON
+// #define REG_DEBUG_ON
+// #define DEBUG_PRINT_REG
 
 static int read_reg(uint8_t slv_addr, const uint16_t reg)
 {
@@ -140,7 +141,7 @@ static int reset(sensor_t *sensor)
 
     ret = write_regs(sensor->slv_addr, gc032a_default_regs);
     if (ret == 0) {
-        ESP_LOGD(TAG, "Camera defaults loaded");
+        ESP_LOGI(TAG, "Camera defaults loaded");
         vTaskDelay(100 / portTICK_PERIOD_MS);
         write_reg(sensor->slv_addr, 0xfe, 0x00);
         set_reg_bits(sensor->slv_addr, 0xf7, 1, 0x01, 1); // PLL_mode1:div2en
@@ -162,6 +163,7 @@ static int set_pixformat(sensor_t *sensor, pixformat_t pixformat)
         break;
 
     case PIXFORMAT_YUV422:
+    case PIXFORMAT_GRAYSCALE:
         write_reg(sensor->slv_addr, 0xfe, 0x00);
         ret = set_reg_bits(sensor->slv_addr, 0x44, 0, 0x1f, 3);
         break;
@@ -251,6 +253,67 @@ static int set_colorbar(sensor_t *sensor, int enable)
     return ret;
 }
 
+static int set_gain_ctrl(sensor_t *sensor, int enable)
+{
+    return -1;
+}
+
+static int set_agc_gain(sensor_t *sensor, int gain)
+{
+    if(gain < 16) gain = 16;
+    if(gain > 2032) gain = 2032;
+
+    return -1;
+}
+
+static int get_agc_gain(sensor_t *sensor)
+{
+    return 0;
+}
+
+static int set_awb_gain(sensor_t *sensor, int gain)
+{
+    return -1;
+}
+
+static int set_whitebal(sensor_t *sensor, int enable)
+{
+    return -1;
+}
+
+static int set_exposure_ctrl(sensor_t *sensor, int enable)
+{
+    return -1;
+}
+
+static int set_ae_level(sensor_t *sensor, int level)
+{
+    if (level < 0) level = 0;
+    if (level > UINT16_MAX) level = UINT16_MAX;
+
+    return -1;
+}
+
+static int get_ae_level(sensor_t *sensor)
+{
+    return 0;
+}
+
+static int set_gainceiling(sensor_t *sensor, gainceiling_t val)
+{
+    return -1;
+}
+
+static int set_exposure_czone(sensor_t *sensor, int min, int max)
+{
+    return -1;
+}
+
+static int set_exposure_szone(sensor_t *sensor, int min, int max)
+{
+    return -1;
+}
+
 static int get_reg(sensor_t *sensor, int reg, int mask)
 {
     int ret = 0;
@@ -322,11 +385,6 @@ static int set_dummy(sensor_t *sensor, int val)
     ESP_LOGW(TAG, "Unsupported");
     return -1;
 }
-static int set_gainceiling_dummy(sensor_t *sensor, gainceiling_t val)
-{
-    ESP_LOGW(TAG, "Unsupported");
-    return -1;
-}
 
 int gc032a_detect(int slv_addr, sensor_id_t *id)
 {
@@ -346,40 +404,46 @@ int gc032a_detect(int slv_addr, sensor_id_t *id)
 
 int gc032a_init(sensor_t *sensor)
 {
-    sensor->init_status = init_status;
+    // Set function pointers
     sensor->reset = reset;
+    sensor->init_status = init_status;
     sensor->set_pixformat = set_pixformat;
     sensor->set_framesize = set_framesize;
+    sensor->set_colorbar = set_colorbar;
+    sensor->set_whitebal = set_whitebal;
+    sensor->set_gain_ctrl = set_gain_ctrl;
+    sensor->set_exposure_ctrl = set_exposure_ctrl;
+    sensor->set_hmirror = set_hmirror;
+    sensor->set_vflip = set_vflip;
+    sensor->set_ae_level = set_ae_level;
+    sensor->get_agc_gain = get_agc_gain;
+    sensor->set_awb_gain = set_awb_gain;
+    sensor->set_gainceiling = set_gainceiling;
+
+    sensor->set_agc_gain = set_agc_gain;
+    sensor->get_ae_level = get_ae_level;
+
+    sensor->set_exposure_czone = set_exposure_czone;
+    sensor->set_exposure_szone = set_exposure_szone;
+
+    // not supported
     sensor->set_contrast = set_dummy;
     sensor->set_brightness = set_dummy;
     sensor->set_saturation = set_dummy;
-    sensor->set_sharpness = set_dummy;
-    sensor->set_denoise = set_dummy;
-    sensor->set_gainceiling = set_gainceiling_dummy;
     sensor->set_quality = set_dummy;
-    sensor->set_colorbar = set_colorbar;
-    sensor->set_whitebal = set_dummy;
-    sensor->set_gain_ctrl = set_dummy;
-    sensor->set_exposure_ctrl = set_dummy;
-    sensor->set_hmirror = set_hmirror;
-    sensor->set_vflip = set_vflip;
-
     sensor->set_aec2 = set_dummy;
-    sensor->set_awb_gain = set_dummy;
-    sensor->set_agc_gain = set_dummy;
     sensor->set_aec_value = set_dummy;
-
     sensor->set_special_effect = set_dummy;
     sensor->set_wb_mode = set_dummy;
-    sensor->set_ae_level = set_dummy;
-
     sensor->set_dcw = set_dummy;
     sensor->set_bpc = set_dummy;
     sensor->set_wpc = set_dummy;
-
     sensor->set_raw_gma = set_dummy;
     sensor->set_lenc = set_dummy;
+    sensor->set_sharpness = set_dummy;
+    sensor->set_denoise = set_dummy;
 
+    // register access
     sensor->get_reg = get_reg;
     sensor->set_reg = set_reg;
     sensor->set_res_raw = NULL;

@@ -211,5 +211,6 @@ esp_err_t fmt2jpg(uint8_t *src, size_t src_len, uint16_t width, uint16_t height,
 
 esp_err_t frame2jpg(camera_fb_t * fb, uint8_t quality, uint8_t * out, size_t * out_len)
 {
+    if(fb == nullptr || fb->buf == nullptr) return ESP_FAIL;
     return fmt2jpg(fb->buf, fb->len, fb->width, fb->height, fb->format, quality, out, out_len);
 }
