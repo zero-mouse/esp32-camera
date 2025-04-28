@@ -137,7 +137,7 @@ static void cam_task(void *arg)
     cam_event_t cam_event = 0;
 
     xQueueReset(cam_obj->event_queue);
-
+    bool skip_frame = false;
     while (1)
     {
         xQueueReceive(cam_obj->event_queue, (void *)&cam_event, portMAX_DELAY);
@@ -147,6 +147,8 @@ static void cam_task(void *arg)
 
         case CAM_STATE_IDLE:
         {
+            
+            
             if (cam_event == CAM_VSYNC_EVENT)
             {
                 // DBG_PIN_SET(1);
@@ -162,8 +164,11 @@ static void cam_task(void *arg)
 
         case CAM_STATE_READ_BUF:
         {
+            //printf("STATE READ_BUF\n");
             camera_fb_t *frame_buffer_event = &cam_obj->frames[frame_pos].fb;
             size_t pixels_per_dma = (cam_obj->dma_half_buffer_size * cam_obj->fb_bytes_per_pixel) / (cam_obj->dma_bytes_per_item * cam_obj->in_bytes_per_pixel);
+            
+            
 
             if (cam_event == CAM_IN_SUC_EOF_EVENT)
             {
@@ -191,6 +196,11 @@ static void cam_task(void *arg)
             }
             else if (cam_event == CAM_VSYNC_EVENT)
             {
+                if(skip_frame)
+                {
+                    skip_frame = !skip_frame;
+                    break;
+                }
                 // DBG_PIN_SET(1);
                 ll_cam_stop(cam_obj);
 
@@ -272,6 +282,7 @@ static void cam_task(void *arg)
                 }
                 cnt = 0;
             }
+            skip_frame = !skip_frame;
         }
         break;
         }
