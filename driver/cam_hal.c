@@ -147,8 +147,6 @@ static void cam_task(void *arg)
 
         case CAM_STATE_IDLE:
         {
-            
-            
             if (cam_event == CAM_VSYNC_EVENT)
             {
                 // DBG_PIN_SET(1);
@@ -164,12 +162,9 @@ static void cam_task(void *arg)
 
         case CAM_STATE_READ_BUF:
         {
-            //printf("STATE READ_BUF\n");
             camera_fb_t *frame_buffer_event = &cam_obj->frames[frame_pos].fb;
             size_t pixels_per_dma = (cam_obj->dma_half_buffer_size * cam_obj->fb_bytes_per_pixel) / (cam_obj->dma_bytes_per_item * cam_obj->in_bytes_per_pixel);
             
-            
-
             if (cam_event == CAM_IN_SUC_EOF_EVENT)
             {
                 if (!cam_obj->psram_mode)
@@ -196,9 +191,9 @@ static void cam_task(void *arg)
             }
             else if (cam_event == CAM_VSYNC_EVENT)
             {
+                skip_frame = !skip_frame;
                 if(skip_frame)
-                {
-                    skip_frame = !skip_frame;
+                { 
                     break;
                 }
                 // DBG_PIN_SET(1);
@@ -282,7 +277,7 @@ static void cam_task(void *arg)
                 }
                 cnt = 0;
             }
-            skip_frame = !skip_frame;
+            
         }
         break;
         }
