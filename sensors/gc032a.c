@@ -394,6 +394,9 @@ int gc032a_detect(int slv_addr, sensor_id_t *id)
         uint16_t PID = MIDH << 8 | MIDL;
         if (GC032A_PID == PID) {
             id->PID = PID;
+            id->VER = 0;
+            id->MIDL = MIDL;
+            id->MIDH = MIDH;
             return PID;
         } else {
             ESP_LOGI(TAG, "Mismatch PID=0x%x", PID);
@@ -449,6 +452,12 @@ int gc032a_init(sensor_t *sensor)
     sensor->set_res_raw = NULL;
     sensor->set_pll = NULL;
     sensor->set_xclk = NULL;
+
+    // Retrieve sensor's signature
+    sensor->id.MIDH = SCCB_Read(sensor->slv_addr, SENSOR_ID_HIGH);
+    sensor->id.MIDL = SCCB_Read(sensor->slv_addr, SENSOR_ID_LOW);
+    sensor->id.PID = (sensor->id.MIDH << 8 | sensor->id.MIDL);
+    sensor->id.VER = 0;
 
     ESP_LOGD(TAG, "GC032A Attached");
     return 0;
