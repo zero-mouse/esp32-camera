@@ -16,6 +16,11 @@
 #define AECH                    0x07 /* Exposure VAlue - AEC MSB 5 bits  */
 #define RAVG                    0x08 /* V/R Average Level */
 
+#define GAIN_SET_GAIN(r, x)     ((r & 0x00) | ((x & 0x00FF) >> 0))
+#define VREF_SET_GAIN(r, x)     ((r & 0xC0) | ((x & 0x0300) >> 2))
+#define COM1_SET_AEC(r, x)      ((r & 0xFC) | ((x & 0x0003) >> 0))
+#define AECH_SET_AEC(r, x)      ((r & 0xC0) | ((x & 0xFC00) >> 10))
+
 #define COM2                    0x09 /* Common Control 2 */
 #define COM2_SOFT_SLEEP         0x10 /* Soft sleep mode  */
 #define COM2_OUT_DRIVE_1x       0x00 /* Output drive capability 1x */
@@ -59,6 +64,8 @@
 #define COM6_AUTO_WINDOW        0x01 /* Auto window setting ON/OFF selection when format changes */
 
 #define AEC                     0x10 /* AEC[7:0] (see register AECH for AEC[15:8]) */
+#define AEC_SET_AEC(r, x)       ((r & 0x00) | ((x & 0x03FC) >> 2))
+
 #define CLKRC                   0x11 /* Internal Clock */
 
 #define COM7                    0x12 /* Common Control 7         */
@@ -181,7 +188,13 @@
 
 #define COM16                   0x41 /* Common Control 16 DIFFERENT CONTROLS */
 #define COM16_AWBGAIN		    0x08 /* AWB gain enable */
+#define COM16_SET_AWBGAIN(r, x) ((r & 0xF7) | ((x & 0x1) << 3))
+
 #define COM17                   0x42 /* Common Control 17   */
+#define COM17_AEC_FULL          0x00 /* AEC evaluate full window */
+#define COM17_AEC_1_2           0x40 /* AEC evaluate 1/2 window  */
+#define COM17_AEC_1_4           0x80 /* AEC evaluate 1/4 window  */
+#define COM17_AEC_2_3           0xC0 /* AEC evaluate 2/3 window  */
 
 #define AWBC1                   0x43 /* Reserved */
 #define AWBC2                  	0x44 /* Reserved */
@@ -230,7 +243,7 @@
 #define MANU       		        0x67 /* Manual U Value      */
 #define MANV      		        0x68 /* Manual V Value */
 #define GFIX                    0x69 /* Fix gain control */
-#define GGAIN                   0x6A /* G channel AWB gain */
+#define GREEN                   0x6A /* G channel AWB gain */
 
 #define DBLV               	    0x6B /* PLL and clock ? */
 

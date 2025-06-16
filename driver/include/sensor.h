@@ -240,6 +240,12 @@ typedef struct _sensor {
     int  (*set_agc_gain)        (sensor_t *sensor, int gain);
     int  (*set_aec_value)       (sensor_t *sensor, int gain);
 
+    int  (*get_agc_gain)        (sensor_t *sensor);
+    int  (*get_ae_level)        (sensor_t *sensor);
+
+    int  (*set_exposure_czone)  (sensor_t *sensor, int min, int max);
+    int  (*set_exposure_szone)  (sensor_t *sensor, int min, int max);
+
     int  (*set_special_effect)  (sensor_t *sensor, int effect);
     int  (*set_wb_mode)         (sensor_t *sensor, int mode);
     int  (*set_ae_level)        (sensor_t *sensor, int level);
