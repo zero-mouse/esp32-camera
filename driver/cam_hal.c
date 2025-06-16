@@ -126,6 +126,7 @@ static void cam_task(void *arg)
 
     xQueueReset(cam_obj->event_queue);
 
+    bool second_frame = false;
     while (1) {
         xQueueReceive(cam_obj->event_queue, (void *)&cam_event, portMAX_DELAY);
         DBG_PIN_SET(1);
@@ -168,6 +169,14 @@ static void cam_task(void *arg)
                     cnt++;
 
                 } else if (cam_event == CAM_VSYNC_EVENT) {
+                    if(cam_obj->skip_frames)
+                    {
+                        second_frame = !second_frame;
+                        if(second_frame) {
+                            break;
+                        }
+                    }
+
                     //DBG_PIN_SET(1);
                     ll_cam_stop(cam_obj);
 
@@ -372,6 +381,7 @@ esp_err_t cam_config(const camera_config_t *config, framesize_t frame_size, sens
     CAM_CHECK_GOTO(ret == ESP_OK, "ll_cam_set_sample_mode failed", err);
     
     cam_obj->jpeg_mode = config->pixel_format == PIXFORMAT_JPEG;
+    cam_obj->skip_frames = config->skip_frames;
 #if CONFIG_IDF_TARGET_ESP32
     cam_obj->psram_mode = false;
 #else
