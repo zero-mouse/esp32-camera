@@ -41,6 +41,7 @@
 
 static const char *TAG = "cam_hal";
 static cam_obj_t *cam_obj = NULL;
+static sensor_t *sensor_obj = NULL;
 
 static const uint32_t JPEG_SOI_MARKER = 0xFFD8FF;  // written in little-endian for esp32
 static const uint16_t JPEG_EOI_MARKER = 0xD9FF;  // written in little-endian for esp32
@@ -87,7 +88,7 @@ static bool cam_get_next_frame(int * frame_pos)
     return false;
 }
 
-static bool cam_start_frame(int * frame_pos)
+static bool cam_start_frame(int *frame_pos)
 {
     if (cam_get_next_frame(frame_pos)) {
         if(ll_cam_start(cam_obj, *frame_pos)){
@@ -96,6 +97,10 @@ static bool cam_start_frame(int * frame_pos)
             uint64_t us = (uint64_t)esp_timer_get_time();
             cam_obj->frames[*frame_pos].fb.timestamp.tv_sec = us / 1000000UL;
             cam_obj->frames[*frame_pos].fb.timestamp.tv_usec = us % 1000000UL;
+            if(sensor_obj != NULL) {
+                cam_obj->frames[*frame_pos].fb.gain = sensor_obj->get_agc_gain(sensor_obj);
+                cam_obj->frames[*frame_pos].fb.exposure = sensor_obj->get_ae_level(sensor_obj);
+            }
             return true;
         }
     }
@@ -356,12 +361,14 @@ err:
     return ESP_FAIL;
 }
 
-esp_err_t cam_config(const camera_config_t *config, framesize_t frame_size, uint16_t sensor_pid)
+esp_err_t cam_config(const camera_config_t *config, framesize_t frame_size, sensor_t *sensor)
 {
     CAM_CHECK(NULL != config, "config pointer is invalid", ESP_ERR_INVALID_ARG);
+    CAM_CHECK(NULL != sensor, "sensor pointer is invalid", ESP_ERR_INVALID_ARG);
+    sensor_obj = sensor;
     esp_err_t ret = ESP_OK;
 
-    ret = ll_cam_set_sample_mode(cam_obj, (pixformat_t)config->pixel_format, config->xclk_freq_hz, sensor_pid);
+    ret = ll_cam_set_sample_mode(cam_obj, (pixformat_t)config->pixel_format, config->xclk_freq_hz, sensor_obj->id.PID);
     CAM_CHECK_GOTO(ret == ESP_OK, "ll_cam_set_sample_mode failed", err);
     
     cam_obj->jpeg_mode = config->pixel_format == PIXFORMAT_JPEG;
