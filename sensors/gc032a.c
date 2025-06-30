@@ -224,7 +224,7 @@ static int set_hmirror(sensor_t *sensor, int enable)
     ret = write_reg(sensor->slv_addr, 0xfe, 0x00);
     ret |= set_reg_bits(sensor->slv_addr, P0_CISCTL_MODE1, 0, 0x01, enable);
     if (ret == 0) {
-        ESP_LOGD(TAG, "Set h-mirror to: %d", enable);
+        ESP_LOGW(TAG, "Set h-mirror to: %d", enable);
     }
     return ret;
 }
@@ -236,7 +236,7 @@ static int set_vflip(sensor_t *sensor, int enable)
     ret = write_reg(sensor->slv_addr, 0xfe, 0x00);
     ret |= set_reg_bits(sensor->slv_addr, P0_CISCTL_MODE1, 1, 0x01, enable);
     if (ret == 0) {
-        ESP_LOGD(TAG, "Set v-flip to: %d", enable);
+        ESP_LOGW(TAG, "Set v-flip to: %d", enable);
     }
     return ret;
 }
@@ -268,7 +268,7 @@ static int set_agc_gain(sensor_t *sensor, int gain)
 
 static int get_agc_gain(sensor_t *sensor)
 {
-    return 0;
+    return read_reg(sensor->slv_addr, 0x70);  // Global gain
 }
 
 static int set_awb_gain(sensor_t *sensor, int gain)
@@ -281,37 +281,49 @@ static int set_whitebal(sensor_t *sensor, int enable)
     return -1;
 }
 
-static int set_exposure_ctrl(sensor_t *sensor, int enable)
+static int set_exposure_ctrl(sensor_t *s, int enable)
 {
-    return -1;
+    write_reg(s->slv_addr, 0xFE, 0x00); // Page 0
+    return set_reg_bits(s->slv_addr, 0x4F, 0, 0x01, enable); // Bit 0 = AEC enable
 }
 
-static int set_ae_level(sensor_t *sensor, int level)
+static int set_ae_level(sensor_t *s, int level)
 {
-    if (level < 0) level = 0;
-    if (level > UINT16_MAX) level = UINT16_MAX;
+    if (level < -2) level = -2;
+    if (level > 2)  level = 2;
 
-    return -1;
+    static const uint8_t gain_vals[5] = { 0x10, 0x20, 0x30, 0x40, 0x50 };
+
+    write_reg(s->slv_addr, 0xFE, 0x01); // Page 1
+    return write_reg(s->slv_addr, 0x20, gain_vals[level + 2]); // post gain
 }
 
 static int get_ae_level(sensor_t *sensor)
 {
-    return 0;
+    return read_reg(sensor->slv_addr, 0x20);  // AEC_max_post_dg_gain
 }
 
-static int set_gainceiling(sensor_t *sensor, gainceiling_t val)
+static int set_gainceiling(sensor_t *s, gainceiling_t val)
 {
-    return -1;
+    static const uint8_t gain_map[] = { 0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x7F };
+    if (val < 0) val = 0;
+    if (val > 7) val = 7;
+
+    write_reg(s->slv_addr, 0xFE, 0x01); // Page 1
+    return write_reg(s->slv_addr, 0x1F, gain_map[val]) | write_reg(s->slv_addr, 0x20, gain_map[val]);
 }
 
-static int set_exposure_czone(sensor_t *sensor, int min, int max)
+static int set_exposure_czone(sensor_t *s, int min, int max)
 {
-    return -1;
+    write_reg(s->slv_addr, 0xFE, 0x01); // Page 1
+    return write_reg(s->slv_addr, 0x25, min) | write_reg(s->slv_addr, 0x24, max);
 }
 
-static int set_exposure_szone(sensor_t *sensor, int min, int max)
+static int set_exposure_szone(sensor_t *s, int min, int max)
 {
-    return -1;
+    write_reg(s->slv_addr, 0xFE, 0x01); // Page 1
+    uint8_t vpt = (max & 0xF0) | ((min & 0xF0) >> 4);
+    return write_reg(s->slv_addr, 0x26, vpt);
 }
 
 static int get_reg(sensor_t *sensor, int reg, int mask)
