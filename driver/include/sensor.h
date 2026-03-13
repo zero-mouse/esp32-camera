@@ -271,6 +271,9 @@ typedef struct _sensor {
     int  (*set_pll)             (sensor_t *sensor, int bypass, int mul, int sys, int root, int pre, int seld5, int pclken, int pclk);
     int  (*set_xclk)            (sensor_t *sensor, int timer, int xclk);
 
+    // Streaming control (software standby). NULL if not supported.
+    int  (*set_streaming)       (sensor_t *sensor, int enable);
+
     // Autofocus function pointers (sensor-specific implementations)
     int  (*af_is_supported)     (sensor_t *sensor);
     int  (*af_init)             (sensor_t *sensor, uint32_t timeout_ms);
