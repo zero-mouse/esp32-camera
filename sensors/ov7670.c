@@ -47,9 +47,10 @@ static struct regval_list ov7670_default_regs[] = {
 
     {COM10, COM10_VSYNC_NEG | COM10_PCLK_FREE},
 
-    /* Improve white balance */ 
-	{COM4, 0x40},  
-    
+    /* Improve white balance */
+    {COM4, 0x40 | COM4_AEC_1_4},
+    {COM17, COM17_AEC_1_4},
+
     /* Improve color */   
     {RSVD_B0, 0x84},  
 
@@ -191,7 +192,7 @@ static int ov7670_frame_control(sensor_t *sensor, int hstart, int hstop, int vst
     frame[4].value = (vstop >> 2);
 
     frame[5].reg_num = VREF;
-    frame[5].value = (((vstop & 0x02) << 2) | (vstart & 0x02));
+    frame[5].value = (((vstop & 0x03) << 2) | (vstart & 0x03));
 
     /* End mark */
     frame[6].reg_num = 0xFF;
@@ -327,17 +328,16 @@ static int set_colorbar(sensor_t *sensor, int enable)
 
 static int set_whitebal(sensor_t *sensor, int enable)
 {
-    // Read register COM8
-    uint8_t reg = SCCB_Read(sensor->slv_addr, COM8);
+    // Read register COM8 and COM16
+    uint8_t reg8 = SCCB_Read(sensor->slv_addr, COM8);
+    uint8_t reg16 = SCCB_Read(sensor->slv_addr, COM16);
 
-    // Set white bal on/off
-    reg = COM8_SET_AWB(reg, enable);
+    // Set auto white bal on/off, and enable wb gain
+    reg8 = COM8_SET_AWB(reg8, enable);
+    reg16 = COM16_SET_AWBGAIN(reg16, 1);
 
-    // Write back register COM8
-    int ret = SCCB_Write(sensor->slv_addr, COM8, reg);
-    if (ret == 0)
-        sensor->status.awb = enable;
-    return ret;
+    // Write back register COM8 and COM16
+    return SCCB_Write(sensor->slv_addr, COM8, reg8) | SCCB_Write(sensor->slv_addr, COM16, reg16);
 }
 
 static int set_gain_ctrl(sensor_t *sensor, int enable)
@@ -345,7 +345,7 @@ static int set_gain_ctrl(sensor_t *sensor, int enable)
     // Read register COM8
     uint8_t reg = SCCB_Read(sensor->slv_addr, COM8);
 
-    // Set white bal on/off
+    // Set auto gain on/off
     reg = COM8_SET_AGC(reg, enable);
 
     // Write back register COM8
@@ -357,7 +357,7 @@ static int set_exposure_ctrl(sensor_t *sensor, int enable)
     // Read register COM8
     uint8_t reg = SCCB_Read(sensor->slv_addr, COM8);
 
-    // Set white bal on/off
+    // Set auto exposure on/off
     reg = COM8_SET_AEC(reg, enable);
 
     // Write back register COM8
@@ -390,48 +390,63 @@ static int set_vflip(sensor_t *sensor, int enable)
 
 static int set_ae_level(sensor_t *sensor, int level)
 {
-    // AEC target value (register AEW = upper bound, AEB = lower bound)
-    int ret = SCCB_Write(sensor->slv_addr, AEW, level & 0xFF);
-    return ret;
+    if (level < 0) level = 0;
+    if (level > UINT16_MAX) level = UINT16_MAX;
+
+    return SCCB_Write(sensor->slv_addr, COM1, COM1_SET_AEC(SCCB_Read(sensor->slv_addr, COM1), (uint16_t) level))
+        | SCCB_Write(sensor->slv_addr, AEC, AEC_SET_AEC(SCCB_Read(sensor->slv_addr, AEC), (uint16_t) level))
+        | SCCB_Write(sensor->slv_addr, AECH, AECH_SET_AEC(SCCB_Read(sensor->slv_addr, AECH), (uint16_t) level));
 }
 
 static int get_ae_level(sensor_t *sensor)
 {
-    return SCCB_Read(sensor->slv_addr, AEW);
+    return UINT16_MAX & ((SCCB_Read(sensor->slv_addr, COM1) & 0x03)
+        | (SCCB_Read(sensor->slv_addr, AEC) << 2)
+        | ((SCCB_Read(sensor->slv_addr, AECH) & 0x3F) << 10));
 }
 
 static int set_agc_gain(sensor_t *sensor, int gain)
 {
-    // GAIN register [7:0] = gain value
-    // COM9[6:4] = gain ceiling
-    int ret = SCCB_Write(sensor->slv_addr, GAIN, gain & 0xFF);
-    return ret;
+    if(gain < 16) gain = 16;
+    if(gain > 2032) gain = 2032;
+
+    // The sensor has 6 fixed commutative gain stages which each double the signal, and a x1 - x2 programable preamp with 16 steps.
+    // High 6 bits toggle the stages, low 4 bits set the preamp factor (minus 1).
+    uint8_t log2 = 31 - __builtin_clz(gain >> 4);
+    uint16_t encoded = ((((1 << log2) - 1) & 0x3F) << 4) | (((gain / (1 << log2)) - 16) & 0x0F);
+
+    return SCCB_Write(sensor->slv_addr, GAIN, GAIN_SET_GAIN(SCCB_Read(sensor->slv_addr, GAIN), encoded))
+        | SCCB_Write(sensor->slv_addr, VREF, VREF_SET_GAIN(SCCB_Read(sensor->slv_addr, VREF), encoded));
 }
 
 static int get_agc_gain(sensor_t *sensor)
 {
-    return SCCB_Read(sensor->slv_addr, GAIN);
+    uint16_t encoded = SCCB_Read(sensor->slv_addr, GAIN) | ((SCCB_Read(sensor->slv_addr, VREF) & 0xC0) << 2);
+    return ((encoded & 0x0F) + 16) * (1 << __builtin_popcount(encoded & 0x3F0));
 }
 
 static int set_awb_gain(sensor_t *sensor, int gain)
 {
-    // Manual AWB gain via BLUE and RED channel registers
-    int ret = SCCB_Write(sensor->slv_addr, BLUE, (gain >> 8) & 0xFF);
-    ret |= SCCB_Write(sensor->slv_addr, RED, gain & 0xFF);
-    return ret;
+    uint8_t blue = ((gain >> 0) & 0xFF);
+    if(blue < 0x40) blue = 0x40;
+    uint8_t red = ((gain >> 8) & 0xFF);
+    if(red < 0x40) red = 0x40;
+    uint8_t green = ((gain >> 16) & 0xFF);
+    if(green < 0x40) green = 0x40;
+
+    return SCCB_Write(sensor->slv_addr, BLUE, blue) | SCCB_Write(sensor->slv_addr, RED, red) | SCCB_Write(sensor->slv_addr, GREEN, green);
 }
 
 static int set_gainceiling(sensor_t *sensor, gainceiling_t val) {
-    uint8_t reg = SCCB_Read(sensor->slv_addr, COM9);
-    return SCCB_Write(sensor->slv_addr, COM9, (reg & 0x8F) | ((val & 0x07) << 4));
+    return SCCB_Write(sensor->slv_addr, COM9, COM9_SET_AGCMAX(SCCB_Read(sensor->slv_addr, COM9), (uint8_t) val));
 }
 
 static int set_exposure_czone(sensor_t *sensor, int min, int max) {
-    return SCCB_Write(sensor->slv_addr, AEW, max & 0xFF) | SCCB_Write(sensor->slv_addr, AEB, min & 0xFF);
+    return SCCB_Write(sensor->slv_addr, AEW, (uint8_t) max) | SCCB_Write(sensor->slv_addr, AEB, (uint8_t) min);
 }
 
 static int set_exposure_szone(sensor_t *sensor, int min, int max) {
-    return SCCB_Write(sensor->slv_addr, VPT, ((max & 0x0F) << 4) | (min & 0x0F));
+    return SCCB_Write(sensor->slv_addr, VPT, (uint8_t) ((max & 0xF0) | ((min & 0xF0) >> 4)));
 }
 
 static int init_status(sensor_t *sensor)
