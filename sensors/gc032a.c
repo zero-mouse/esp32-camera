@@ -255,20 +255,32 @@ static int set_colorbar(sensor_t *sensor, int enable)
 
 static int set_gain_ctrl(sensor_t *sensor, int enable)
 {
-    return -1;
+    // GC032A has no separate AGC enable bit; gain is fixed whenever AEC is disabled.
+    sensor->status.agc = enable;
+    return 0;
 }
 
 static int set_agc_gain(sensor_t *sensor, int gain)
 {
-    if(gain < 16) gain = 16;
-    if(gain > 2032) gain = 2032;
+    // P0:0x70 Global_gain is a full 8-bit gain register (default 0x70).
+    // P0:0x48 gain_code is only [3:0] (4-bit, 0-15) — used as a secondary multiplier.
+    // We write Global_gain for the primary control.
+    if (gain < 0)   gain = 0;
+    if (gain > 255) gain = 255;
 
-    return -1;
+    int ret = write_reg(sensor->slv_addr, 0xfe, 0x00); // select page 0
+    ret |= write_reg(sensor->slv_addr, 0x70, (uint8_t)gain); // Global_gain
+    if (ret == 0) {
+        sensor->status.agc_gain = gain;
+        ESP_LOGD(TAG, "Set gain to: %d", gain);
+    }
+    return ret;
 }
 
 static int get_agc_gain(sensor_t *sensor)
 {
-    return 0;
+    write_reg(sensor->slv_addr, 0xfe, 0x00);
+    return read_reg(sensor->slv_addr, 0x70); // Global_gain, matches set_agc_gain
 }
 
 static int set_awb_gain(sensor_t *sensor, int gain)
@@ -283,20 +295,39 @@ static int set_whitebal(sensor_t *sensor, int enable)
 
 static int set_exposure_ctrl(sensor_t *sensor, int enable)
 {
-    return -1;
+    // Page 0, reg 0x4f bit 0 = AEC enable
+    int ret = write_reg(sensor->slv_addr, 0xfe, 0x00); // select page 0
+    ret |= set_reg_bits(sensor->slv_addr, 0x4f, 0, 0x01, enable ? 1 : 0);
+    if (ret == 0) {
+        sensor->status.aec = enable;
+        ESP_LOGD(TAG, "Set AEC to: %d", enable);
+    }
+    return ret;
 }
 
 static int set_ae_level(sensor_t *sensor, int level)
 {
-    if (level < 0) level = 0;
-    if (level > UINT16_MAX) level = UINT16_MAX;
+    // level = exposure time in row periods; 12-bit value: 0x03[3:0] = bits[11:8], 0x04[7:0] = bits[7:0]
+    if (level < 0)      level = 0;
+    if (level > 0x0fff) level = 0x0fff;
 
-    return -1;
+    int ret = write_reg(sensor->slv_addr, 0xfe, 0x00); // select page 0
+    ret |= write_reg(sensor->slv_addr, P0_EXPOSURE_HIGH, (level >> 8) & 0x0f);
+    ret |= write_reg(sensor->slv_addr, P0_EXPOSURE_LOW,  level & 0xff);
+    if (ret == 0) {
+        sensor->status.ae_level = level;
+        ESP_LOGD(TAG, "Set exposure to: %d", level);
+    }
+    return ret;
 }
 
 static int get_ae_level(sensor_t *sensor)
 {
-    return 0;
+    write_reg(sensor->slv_addr, 0xfe, 0x00);
+    int hi = read_reg(sensor->slv_addr, P0_EXPOSURE_HIGH);
+    int lo = read_reg(sensor->slv_addr, P0_EXPOSURE_LOW);
+    if (hi < 0 || lo < 0) return -1;
+    return ((hi & 0x0f) << 8) | (lo & 0xff);
 }
 
 static int set_gainceiling(sensor_t *sensor, gainceiling_t val)
