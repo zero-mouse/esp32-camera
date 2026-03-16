@@ -311,9 +311,26 @@ static int set_ae_level(sensor_t *sensor, int level)
     if (level < 0)      level = 0;
     if (level > 0x0fff) level = 0x0fff;
 
-    int ret = write_reg(sensor->slv_addr, 0xfe, 0x00); // select page 0
-    ret |= write_reg(sensor->slv_addr, P0_EXPOSURE_HIGH, (level >> 8) & 0x0f);
-    ret |= write_reg(sensor->slv_addr, P0_EXPOSURE_LOW,  level & 0xff);
+    uint8_t hi = (level >> 8) & 0x0f;
+    uint8_t lo = level & 0xff;
+
+    // Page 0: manual exposure registers
+    int ret = write_reg(sensor->slv_addr, 0xfe, 0x00);
+    ret |= write_reg(sensor->slv_addr, P0_EXPOSURE_HIGH, hi);
+    ret |= write_reg(sensor->slv_addr, P0_EXPOSURE_LOW,  lo);
+
+    // Page 1: AEC exposure step table (7 steps, registers 0x27-0x34).
+    // Setting all steps to the same value pins the AEC to a narrow exposure band,
+    // forcing brightness compensation through gain (AGC) instead of shutter time.
+    ret |= write_reg(sensor->slv_addr, 0xfe, 0x01);
+    ret |= write_reg(sensor->slv_addr, 0x27, hi); ret |= write_reg(sensor->slv_addr, 0x28, lo);
+    ret |= write_reg(sensor->slv_addr, 0x29, hi); ret |= write_reg(sensor->slv_addr, 0x2a, lo);
+    ret |= write_reg(sensor->slv_addr, 0x2b, hi); ret |= write_reg(sensor->slv_addr, 0x2c, lo);
+    ret |= write_reg(sensor->slv_addr, 0x2d, hi); ret |= write_reg(sensor->slv_addr, 0x2e, lo);
+    ret |= write_reg(sensor->slv_addr, 0x2f, hi); ret |= write_reg(sensor->slv_addr, 0x30, lo);
+    ret |= write_reg(sensor->slv_addr, 0x31, hi); ret |= write_reg(sensor->slv_addr, 0x32, lo);
+    ret |= write_reg(sensor->slv_addr, 0x33, hi); ret |= write_reg(sensor->slv_addr, 0x34, lo);
+
     if (ret == 0) {
         sensor->status.ae_level = level;
         ESP_LOGD(TAG, "Set exposure to: %d", level);
@@ -332,7 +349,23 @@ static int get_ae_level(sensor_t *sensor)
 
 static int set_gainceiling(sensor_t *sensor, gainceiling_t val)
 {
-    return -1;
+    // P1:0x35-0x3b = AEC_max_dg_gain1-7 (5.3-bit fixed-point: value/8 = gain multiplier).
+    // All 7 registers are set to the same ceiling so the AGC is uniformly capped
+    // across all exposure levels (which are already pinned to the same value).
+    uint8_t ceiling = (uint8_t)val;
+    int ret = write_reg(sensor->slv_addr, 0xfe, 0x01); // page 1
+    ret |= write_reg(sensor->slv_addr, 0x35, ceiling);
+    ret |= write_reg(sensor->slv_addr, 0x36, ceiling);
+    ret |= write_reg(sensor->slv_addr, 0x37, ceiling);
+    ret |= write_reg(sensor->slv_addr, 0x38, ceiling);
+    ret |= write_reg(sensor->slv_addr, 0x39, ceiling);
+    ret |= write_reg(sensor->slv_addr, 0x3a, ceiling);
+    ret |= write_reg(sensor->slv_addr, 0x3b, ceiling);
+    if (ret == 0) {
+        sensor->status.gainceiling = (int)val;
+        ESP_LOGD(TAG, "Set gain ceiling to: %d", ceiling);
+    }
+    return ret;
 }
 
 static int set_exposure_czone(sensor_t *sensor, int min, int max)
