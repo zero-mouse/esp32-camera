@@ -375,13 +375,13 @@ static void cam_task(void *arg)
                     cnt++;
 
                 } else if (cam_event == CAM_VSYNC_EVENT) {
-                    if(cam_obj->skip_frames)
-                    {
-                        second_frame = !second_frame;
-                        if(second_frame) {
-                            break;
-                        }
-                    }
+                    // if(cam_obj->skip_frames)
+                    // {
+                    //     second_frame = !second_frame;
+                    //     if(second_frame) {
+                    //         break;
+                    //     }
+                    // }
 
                     //DBG_PIN_SET(1);
                     if (cam_obj->skip_frames) {
