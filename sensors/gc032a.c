@@ -314,22 +314,11 @@ static int set_ae_level(sensor_t *sensor, int level)
     uint8_t hi = (level >> 8) & 0x0f;
     uint8_t lo = level & 0xff;
 
-    // Page 0: manual exposure registers
-    int ret = write_reg(sensor->slv_addr, 0xfe, 0x00);
+    // Seed the manual exposure registers only. The AEC step table (P1:0x27-0x34) is left
+    // at factory defaults so the AEC engine retains its full graduated exposure range.
+    int ret = write_reg(sensor->slv_addr, 0xfe, 0x00); // page 0
     ret |= write_reg(sensor->slv_addr, P0_EXPOSURE_HIGH, hi);
     ret |= write_reg(sensor->slv_addr, P0_EXPOSURE_LOW,  lo);
-
-    // Page 1: AEC exposure step table (7 steps, registers 0x27-0x34).
-    // Setting all steps to the same value pins the AEC to a narrow exposure band,
-    // forcing brightness compensation through gain (AGC) instead of shutter time.
-    ret |= write_reg(sensor->slv_addr, 0xfe, 0x01);
-    ret |= write_reg(sensor->slv_addr, 0x27, hi); ret |= write_reg(sensor->slv_addr, 0x28, lo);
-    ret |= write_reg(sensor->slv_addr, 0x29, hi); ret |= write_reg(sensor->slv_addr, 0x2a, lo);
-    ret |= write_reg(sensor->slv_addr, 0x2b, hi); ret |= write_reg(sensor->slv_addr, 0x2c, lo);
-    ret |= write_reg(sensor->slv_addr, 0x2d, hi); ret |= write_reg(sensor->slv_addr, 0x2e, lo);
-    ret |= write_reg(sensor->slv_addr, 0x2f, hi); ret |= write_reg(sensor->slv_addr, 0x30, lo);
-    ret |= write_reg(sensor->slv_addr, 0x31, hi); ret |= write_reg(sensor->slv_addr, 0x32, lo);
-    ret |= write_reg(sensor->slv_addr, 0x33, hi); ret |= write_reg(sensor->slv_addr, 0x34, lo);
 
     if (ret == 0) {
         sensor->status.ae_level = level;
@@ -370,12 +359,18 @@ static int set_gainceiling(sensor_t *sensor, gainceiling_t val)
 
 static int set_exposure_czone(sensor_t *sensor, int min, int max)
 {
-    return -1;
+    // P1:0x12 = AEC upper brightness target, P1:0x13 = lower brightness target.
+    // Analogous to OV7670's AEW (upper) and AEB (lower) registers.
+    int ret = write_reg(sensor->slv_addr, 0xfe, 0x01); // page 1
+    ret |= write_reg(sensor->slv_addr, 0x12, (uint8_t)max);
+    ret |= write_reg(sensor->slv_addr, 0x13, (uint8_t)min);
+    return ret;
 }
 
 static int set_exposure_szone(sensor_t *sensor, int min, int max)
 {
-    return -1;
+    // GC032A has no fast/slow AEC zone register equivalent to OV7670's VPT.
+    return 0;
 }
 
 static int get_reg(sensor_t *sensor, int reg, int mask)
