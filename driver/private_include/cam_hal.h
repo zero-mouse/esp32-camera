@@ -47,6 +47,8 @@ esp_err_t cam_init(const camera_config_t *config);
 
 esp_err_t cam_config(const camera_config_t *config, framesize_t frame_size, uint16_t sensor_pid);
 
+void cam_set_sensor(sensor_t *sensor);
+
 void cam_stop(void);
 
 void cam_start(void);
@@ -56,6 +58,11 @@ camera_fb_t *cam_take(TickType_t timeout);
 void cam_give(camera_fb_t *dma_buffer);
 
 void cam_give_all(void);
+
+bool cam_get_available_frames(void);
+
+void cam_set_psram_mode(bool enable);
+bool cam_get_psram_mode(void);
 
 #ifdef __cplusplus
 }

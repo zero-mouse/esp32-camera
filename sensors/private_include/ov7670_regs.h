@@ -7,13 +7,17 @@
 #ifndef __OV7670_REG_REGS_H__
 #define __OV7670_REG_REGS_H__
 #define GAIN                    0x00 /* AGC – Gain control gain setting  */
+#define GAIN_SET_GAIN(r, x)     ((r & 0x00) | ((x & 0x00FF) >> 0))
 #define BLUE                    0x01 /* AWB – Blue channel gain setting  */
 #define RED                     0x02 /* AWB – Red channel gain setting   */
-#define VREF                    0x03 /* AWB – Green channel gain setting */
+#define VREF                    0x03 /* AWB – Gain control high bits gain setting */
+#define VREF_SET_GAIN(r, x)     ((r & 0xC0) | ((x & 0x0300) >> 2))
 #define COM1			        0x04 /* Common Control 1 */
+#define COM1_SET_AEC(r, x)      ((r & 0xFC) | ((x & 0x0003) >> 0))
 #define BAVG                    0x05 /* U/B Average Level   */
 #define GAVG                    0x06 /* Y/Gb Average Level  */
 #define AECH                    0x07 /* Exposure VAlue - AEC MSB 5 bits  */
+#define AECH_SET_AEC(r, x)      ((r & 0xC0) | ((x & 0xFC00) >> 10))
 #define RAVG                    0x08 /* V/R Average Level */
 
 #define COM2                    0x09 /* Common Control 2 */
@@ -59,6 +63,7 @@
 #define COM6_AUTO_WINDOW        0x01 /* Auto window setting ON/OFF selection when format changes */
 
 #define AEC                     0x10 /* AEC[7:0] (see register AECH for AEC[15:8]) */
+#define AEC_SET_AEC(r, x)       ((r & 0x00) | ((x & 0x03FC) >> 2))
 #define CLKRC                   0x11 /* Internal Clock */
 
 #define COM7                    0x12 /* Common Control 7         */
@@ -92,15 +97,7 @@
 #define COM8_SET_AEC(r, x)      ((r&0xFE)|((x&0x1)<<0))
 
 #define COM9                    0x14 /* Common Control 9 */
-#define COM9_HISTO_AVG          0x80 /* Histogram or average based AEC/AGC selection */
-#define COM9_AGC_GAIN_2x        0x00 /* Automatic Gain Ceiling 2x  */
-#define COM9_AGC_GAIN_4x        0x10 /* Automatic Gain Ceiling 4x  */
-#define COM9_AGC_GAIN_8x        0x20 /* Automatic Gain Ceiling 8x  */
-#define COM9_AGC_GAIN_16x       0x30 /* Automatic Gain Ceiling 16x */
-#define COM9_AGC_GAIN_32x       0x40 /* Automatic Gain Ceiling 32x */
-#define COM9_DROP_VSYNC         0x04 /* Drop VSYNC output of corrupt frame */
-#define COM9_DROP_HREF          0x02 /* Drop HREF output of corrupt frame  */
-#define COM9_SET_AGC(r, x)      ((r&0x8F)|((x&0x07)<<4))
+#define COM9_SET_AGCMAX(r, x)   ((r & 0x8F) | ((x & 0x07) << 4))
 
 #define COM10                   0x15 /* Common Control 10 */
 #define COM10_NEGATIVE          0x80 /* Output negative data */
@@ -181,7 +178,12 @@
 
 #define COM16                   0x41 /* Common Control 16 DIFFERENT CONTROLS */
 #define COM16_AWBGAIN		    0x08 /* AWB gain enable */
+#define COM16_SET_AWBGAIN(r, x) ((r & 0xF7) | ((x & 0x1) << 3))
 #define COM17                   0x42 /* Common Control 17   */
+#define COM17_AEC_FULL          0x00 /* AEC evaluate full window */
+#define COM17_AEC_1_2           0x40 /* AEC evaluate 1/2 window  */
+#define COM17_AEC_1_4           0x80 /* AEC evaluate 1/4 window  */
+#define COM17_AEC_2_3           0xC0 /* AEC evaluate 2/3 window  */
 
 #define AWBC1                   0x43 /* Reserved */
 #define AWBC2                  	0x44 /* Reserved */
@@ -230,7 +232,7 @@
 #define MANU       		        0x67 /* Manual U Value      */
 #define MANV      		        0x68 /* Manual V Value */
 #define GFIX                    0x69 /* Fix gain control */
-#define GGAIN                   0x6A /* G channel AWB gain */
+#define GREEN                   0x6A /* G channel AWB gain */
 
 #define DBLV               	    0x6B /* PLL and clock ? */
 

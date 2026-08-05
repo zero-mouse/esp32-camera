@@ -47,9 +47,10 @@ static struct regval_list ov7670_default_regs[] = {
 
     {COM10, COM10_VSYNC_NEG | COM10_PCLK_FREE},
 
-    /* Improve white balance */ 
-	{COM4, 0x40},  
-    
+    /* Improve white balance */
+    {COM4, 0x40 | COM4_AEC_1_4},
+    {COM17, COM17_AEC_1_4},
+
     /* Improve color */   
     {RSVD_B0, 0x84},  
 
@@ -191,7 +192,7 @@ static int ov7670_frame_control(sensor_t *sensor, int hstart, int hstop, int vst
     frame[4].value = (vstop >> 2);
 
     frame[5].reg_num = VREF;
-    frame[5].value = (((vstop & 0x02) << 2) | (vstart & 0x02));
+    frame[5].value = (((vstop & 0x03) << 2) | (vstart & 0x03));
 
     /* End mark */
     frame[6].reg_num = 0xFF;
@@ -279,10 +280,16 @@ static int set_framesize(sensor_t *sensor, framesize_t framesize)
                 /* These values from Omnivision */
                 ret = ov7670_frame_control(sensor, 158, 14, 12, 490);
             }
-        break; 
+        break;
+
+        case FRAMESIZE_224X224:
+            if( (ret = ov7670_write_array(sensor, ov7670_qvga)) == 0 ) {
+                ret = ov7670_frame_control(sensor, 206, 46, 18, 466);
+            }
+        break;
 
         default:
-            ret = -1;   
+            ret = -1;
     }
 
     vTaskDelay(30 / portTICK_PERIOD_MS);
@@ -321,14 +328,16 @@ static int set_colorbar(sensor_t *sensor, int enable)
 
 static int set_whitebal(sensor_t *sensor, int enable)
 {
-    // Read register COM8
-    uint8_t reg = SCCB_Read(sensor->slv_addr, COM8);
+    // Read register COM8 and COM16
+    uint8_t reg8 = SCCB_Read(sensor->slv_addr, COM8);
+    uint8_t reg16 = SCCB_Read(sensor->slv_addr, COM16);
 
-    // Set white bal on/off
-    reg = COM8_SET_AWB(reg, enable);
+    // Set auto white bal on/off, and enable wb gain
+    reg8 = COM8_SET_AWB(reg8, enable);
+    reg16 = COM16_SET_AWBGAIN(reg16, 1);
 
-    // Write back register COM8
-    return SCCB_Write(sensor->slv_addr, COM8, reg);
+    // Write back register COM8 and COM16
+    return SCCB_Write(sensor->slv_addr, COM8, reg8) | SCCB_Write(sensor->slv_addr, COM16, reg16);
 }
 
 static int set_gain_ctrl(sensor_t *sensor, int enable)
@@ -336,7 +345,7 @@ static int set_gain_ctrl(sensor_t *sensor, int enable)
     // Read register COM8
     uint8_t reg = SCCB_Read(sensor->slv_addr, COM8);
 
-    // Set white bal on/off
+    // Set auto gain on/off
     reg = COM8_SET_AGC(reg, enable);
 
     // Write back register COM8
@@ -348,7 +357,7 @@ static int set_exposure_ctrl(sensor_t *sensor, int enable)
     // Read register COM8
     uint8_t reg = SCCB_Read(sensor->slv_addr, COM8);
 
-    // Set white bal on/off
+    // Set auto exposure on/off
     reg = COM8_SET_AEC(reg, enable);
 
     // Write back register COM8
@@ -379,6 +388,67 @@ static int set_vflip(sensor_t *sensor, int enable)
     return SCCB_Write(sensor->slv_addr, MVFP, reg);
 }
 
+static int set_ae_level(sensor_t *sensor, int level)
+{
+    if (level < 0) level = 0;
+    if (level > UINT16_MAX) level = UINT16_MAX;
+
+    return SCCB_Write(sensor->slv_addr, COM1, COM1_SET_AEC(SCCB_Read(sensor->slv_addr, COM1), (uint16_t) level))
+        | SCCB_Write(sensor->slv_addr, AEC, AEC_SET_AEC(SCCB_Read(sensor->slv_addr, AEC), (uint16_t) level))
+        | SCCB_Write(sensor->slv_addr, AECH, AECH_SET_AEC(SCCB_Read(sensor->slv_addr, AECH), (uint16_t) level));
+}
+
+static int get_ae_level(sensor_t *sensor)
+{
+    return UINT16_MAX & ((SCCB_Read(sensor->slv_addr, COM1) & 0x03)
+        | (SCCB_Read(sensor->slv_addr, AEC) << 2)
+        | ((SCCB_Read(sensor->slv_addr, AECH) & 0x3F) << 10));
+}
+
+static int set_agc_gain(sensor_t *sensor, int gain)
+{
+    if(gain < 16) gain = 16;
+    if(gain > 2032) gain = 2032;
+
+    // The sensor has 6 fixed commutative gain stages which each double the signal, and a x1 - x2 programable preamp with 16 steps.
+    // High 6 bits toggle the stages, low 4 bits set the preamp factor (minus 1).
+    uint8_t log2 = 31 - __builtin_clz(gain >> 4);
+    uint16_t encoded = ((((1 << log2) - 1) & 0x3F) << 4) | (((gain / (1 << log2)) - 16) & 0x0F);
+
+    return SCCB_Write(sensor->slv_addr, GAIN, GAIN_SET_GAIN(SCCB_Read(sensor->slv_addr, GAIN), encoded))
+        | SCCB_Write(sensor->slv_addr, VREF, VREF_SET_GAIN(SCCB_Read(sensor->slv_addr, VREF), encoded));
+}
+
+static int get_agc_gain(sensor_t *sensor)
+{
+    uint16_t encoded = SCCB_Read(sensor->slv_addr, GAIN) | ((SCCB_Read(sensor->slv_addr, VREF) & 0xC0) << 2);
+    return ((encoded & 0x0F) + 16) * (1 << __builtin_popcount(encoded & 0x3F0));
+}
+
+static int set_awb_gain(sensor_t *sensor, int gain)
+{
+    uint8_t blue = ((gain >> 0) & 0xFF);
+    if(blue < 0x40) blue = 0x40;
+    uint8_t red = ((gain >> 8) & 0xFF);
+    if(red < 0x40) red = 0x40;
+    uint8_t green = ((gain >> 16) & 0xFF);
+    if(green < 0x40) green = 0x40;
+
+    return SCCB_Write(sensor->slv_addr, BLUE, blue) | SCCB_Write(sensor->slv_addr, RED, red) | SCCB_Write(sensor->slv_addr, GREEN, green);
+}
+
+static int set_gainceiling(sensor_t *sensor, gainceiling_t val) {
+    return SCCB_Write(sensor->slv_addr, COM9, COM9_SET_AGCMAX(SCCB_Read(sensor->slv_addr, COM9), (uint8_t) val));
+}
+
+static int set_exposure_czone(sensor_t *sensor, int min, int max) {
+    return SCCB_Write(sensor->slv_addr, AEW, (uint8_t) max) | SCCB_Write(sensor->slv_addr, AEB, (uint8_t) min);
+}
+
+static int set_exposure_szone(sensor_t *sensor, int min, int max) {
+    return SCCB_Write(sensor->slv_addr, VPT, (uint8_t) ((max & 0xF0) | ((min & 0xF0) >> 4)));
+}
+
 static int init_status(sensor_t *sensor)
 {
     sensor->status.awb = 0;
@@ -391,9 +461,8 @@ static int init_status(sensor_t *sensor)
 }
 
 static int set_dummy(sensor_t *sensor, int val){ return -1; }
-static int set_gainceiling_dummy(sensor_t *sensor, gainceiling_t val){ return -1; }
 
-int ov7670_detect(int slv_addr, sensor_id_t *id)
+int esp32_camera_ov7670_detect(int slv_addr, sensor_id_t *id)
 {
     if (OV7670_SCCB_ADDR == slv_addr) {
         SCCB_Write(slv_addr, 0xFF, 0x01);//bank sensor
@@ -411,7 +480,7 @@ int ov7670_detect(int slv_addr, sensor_id_t *id)
     return 0;
 }
 
-int ov7670_init(sensor_t *sensor)
+int esp32_camera_ov7670_init(sensor_t *sensor)
 {
     // Set function pointers
     sensor->reset = reset;
@@ -425,21 +494,27 @@ int ov7670_init(sensor_t *sensor)
     sensor->set_hmirror = set_hmirror;
     sensor->set_vflip = set_vflip;
 
-    //not supported
-    sensor->set_brightness= set_dummy;
-    sensor->set_saturation= set_dummy;
+    // Implemented controls
+    sensor->set_ae_level = set_ae_level;
+    sensor->set_agc_gain = set_agc_gain;
+    sensor->set_awb_gain = set_awb_gain;
+    sensor->set_gainceiling = set_gainceiling;
+    sensor->get_agc_gain = get_agc_gain;
+    sensor->get_ae_level = get_ae_level;
+    sensor->set_exposure_czone = set_exposure_czone;
+    sensor->set_exposure_szone = set_exposure_szone;
+
+    // Not supported
+    sensor->set_brightness = set_dummy;
+    sensor->set_saturation = set_dummy;
     sensor->set_quality = set_dummy;
-    sensor->set_gainceiling = set_gainceiling_dummy;
     sensor->set_aec2 = set_dummy;
     sensor->set_aec_value = set_dummy;
     sensor->set_special_effect = set_dummy;
     sensor->set_wb_mode = set_dummy;
-    sensor->set_ae_level = set_dummy;
     sensor->set_dcw = set_dummy;
     sensor->set_bpc = set_dummy;
     sensor->set_wpc = set_dummy;
-    sensor->set_awb_gain = set_dummy;
-    sensor->set_agc_gain = set_dummy;
     sensor->set_raw_gma = set_dummy;
     sensor->set_lenc = set_dummy;
     sensor->set_sharpness = set_dummy;
@@ -450,6 +525,14 @@ int ov7670_init(sensor_t *sensor)
     sensor->id.MIDL = SCCB_Read(sensor->slv_addr, REG_MIDL);
     sensor->id.PID = SCCB_Read(sensor->slv_addr, REG_PID);
     sensor->id.VER = SCCB_Read(sensor->slv_addr, REG_VER);
+    
+    // No autofocus support
+    sensor->af_is_supported = NULL;
+    sensor->af_init = NULL;
+    sensor->af_set_mode = NULL;
+    sensor->af_trigger = NULL;
+    sensor->af_get_status = NULL;
+    sensor->af_set_manual_position = NULL;
     
     ESP_LOGD(TAG, "OV7670 Attached");
     

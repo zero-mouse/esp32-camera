@@ -126,6 +126,7 @@ typedef struct {
     uint32_t recv_size;
     bool swap_data;
     bool psram_mode;
+    bool skip_frames;
 
     //for RGB/YUV modes
     uint16_t width;

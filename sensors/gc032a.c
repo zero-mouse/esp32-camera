@@ -33,7 +33,8 @@ static const char *TAG = "gc032a";
 #define H8(v) ((v)>>8)
 #define L8(v) ((v)&0xff)
 
-//#define REG_DEBUG_ON
+// #define REG_DEBUG_ON
+// #define DEBUG_PRINT_REG
 
 static int read_reg(uint8_t slv_addr, const uint16_t reg)
 {
@@ -140,7 +141,7 @@ static int reset(sensor_t *sensor)
 
     ret = write_regs(sensor->slv_addr, gc032a_default_regs);
     if (ret == 0) {
-        ESP_LOGD(TAG, "Camera defaults loaded");
+        ESP_LOGI(TAG, "Camera defaults loaded");
         vTaskDelay(100 / portTICK_PERIOD_MS);
         write_reg(sensor->slv_addr, 0xfe, 0x00);
         set_reg_bits(sensor->slv_addr, 0xf7, 1, 0x01, 1); // PLL_mode1:div2en
@@ -162,11 +163,12 @@ static int set_pixformat(sensor_t *sensor, pixformat_t pixformat)
         break;
 
     case PIXFORMAT_YUV422:
+    case PIXFORMAT_GRAYSCALE:
         write_reg(sensor->slv_addr, 0xfe, 0x00);
         ret = set_reg_bits(sensor->slv_addr, 0x44, 0, 0x1f, 3);
         break;
     default:
-        ESP_LOGW(TAG, "unsupport format");
+        ESP_LOGW(TAG, "unsupported format");
         ret = -1;
         break;
     }
@@ -251,6 +253,144 @@ static int set_colorbar(sensor_t *sensor, int enable)
     return ret;
 }
 
+static int set_gain_ctrl(sensor_t *sensor, int enable)
+{
+    // GC032A has no separate AGC enable bit; gain is fixed whenever AEC is disabled.
+    sensor->status.agc = enable;
+    return 0;
+}
+
+static int set_agc_gain(sensor_t *sensor, int gain)
+{
+    // P0:0x70 Global_gain is a full 8-bit gain register (default 0x70).
+    // P0:0x48 gain_code is only [3:0] (4-bit, 0-15) — used as a secondary multiplier.
+    // We write Global_gain for the primary control.
+    //
+    // Note this is deliberately asymmetric with get_agc_gain(), which reads Auto_pregain while the
+    // AEC is running.  That mirrors the hardware: Global_gain is the manual multiplier, Auto_pregain
+    // is the AEC's own output.  Writing here is only meaningful with AEC disabled -- with it on, the
+    // AEC drives 0x71/0x72 and this register just scales whatever it decides.
+    if (gain < 0)   gain = 0;
+    if (gain > 255) gain = 255;
+
+    int ret = write_reg(sensor->slv_addr, 0xfe, 0x00); // select page 0
+    ret |= write_reg(sensor->slv_addr, 0x70, (uint8_t)gain); // Global_gain
+    if (ret == 0) {
+        sensor->status.agc_gain = gain;
+        ESP_LOGD(TAG, "Set gain to: %d", gain);
+    }
+    return ret;
+}
+
+static int get_agc_gain(sensor_t *sensor)
+{
+    write_reg(sensor->slv_addr, 0xfe, 0x00);
+    //
+    // Which register holds "the gain" depends on who is driving it:
+    //
+    //   AEC on  - P0:0x71 Auto_pregain is what the AEC actually applies, and it moves.  P0:0x70
+    //             Global_gain is a static multiplier the AEC never touches, so reading it reports
+    //             a constant (0x50, straight from the init blob) no matter what the sensor is
+    //             really doing.  cam_start_frame() calls this per frame to fill fb.gain, so
+    //             reading 0x70 made every frame in every event report the same meaningless value.
+    //   AEC off - 0x71 is frozen at whatever it last was; 0x70 is what set_agc_gain() wrote.
+    //
+    // Returning Auto_pregain under AEC also makes fb.gain directly comparable to the
+    // AEC_max_pre_dg_gain cap (P1:0x1f), which is how you tell that gain has hit its ceiling.
+    //
+    return read_reg(sensor->slv_addr, sensor->status.aec ? 0x71 : 0x70);
+}
+
+static int set_awb_gain(sensor_t *sensor, int gain)
+{
+    return -1;
+}
+
+static int set_whitebal(sensor_t *sensor, int enable)
+{
+    return -1;
+}
+
+static int set_exposure_ctrl(sensor_t *sensor, int enable)
+{
+    // Page 0, reg 0x4f bit 0 = AEC enable
+    int ret = write_reg(sensor->slv_addr, 0xfe, 0x00); // select page 0
+    ret |= set_reg_bits(sensor->slv_addr, 0x4f, 0, 0x01, enable ? 1 : 0);
+    if (ret == 0) {
+        sensor->status.aec = enable;
+        ESP_LOGD(TAG, "Set AEC to: %d", enable);
+    }
+    return ret;
+}
+
+static int set_ae_level(sensor_t *sensor, int level)
+{
+    // level = exposure time in row periods; 12-bit value: 0x03[3:0] = bits[11:8], 0x04[7:0] = bits[7:0]
+    if (level < 0)      level = 0;
+    if (level > 0x0fff) level = 0x0fff;
+
+    uint8_t hi = (level >> 8) & 0x0f;
+    uint8_t lo = level & 0xff;
+
+    // Seed the manual exposure registers only. The AEC step table (P1:0x27-0x34) is left
+    // at factory defaults so the AEC engine retains its full graduated exposure range.
+    int ret = write_reg(sensor->slv_addr, 0xfe, 0x00); // page 0
+    ret |= write_reg(sensor->slv_addr, P0_EXPOSURE_HIGH, hi);
+    ret |= write_reg(sensor->slv_addr, P0_EXPOSURE_LOW,  lo);
+
+    if (ret == 0) {
+        sensor->status.ae_level = level;
+        ESP_LOGD(TAG, "Set exposure to: %d", level);
+    }
+    return ret;
+}
+
+static int get_ae_level(sensor_t *sensor)
+{
+    write_reg(sensor->slv_addr, 0xfe, 0x00);
+    int hi = read_reg(sensor->slv_addr, P0_EXPOSURE_HIGH);
+    int lo = read_reg(sensor->slv_addr, P0_EXPOSURE_LOW);
+    if (hi < 0 || lo < 0) return -1;
+    return ((hi & 0x0f) << 8) | (lo & 0xff);
+}
+
+static int set_gainceiling(sensor_t *sensor, gainceiling_t val)
+{
+    // P1:0x35-0x3b = AEC_max_dg_gain1-7 (5.3-bit fixed-point: value/8 = gain multiplier).
+    // All 7 registers are set to the same ceiling so the AGC is uniformly capped
+    // across all exposure levels (which are already pinned to the same value).
+    uint8_t ceiling = (uint8_t)val;
+    int ret = write_reg(sensor->slv_addr, 0xfe, 0x01); // page 1
+    ret |= write_reg(sensor->slv_addr, 0x35, ceiling);
+    ret |= write_reg(sensor->slv_addr, 0x36, ceiling);
+    ret |= write_reg(sensor->slv_addr, 0x37, ceiling);
+    ret |= write_reg(sensor->slv_addr, 0x38, ceiling);
+    ret |= write_reg(sensor->slv_addr, 0x39, ceiling);
+    ret |= write_reg(sensor->slv_addr, 0x3a, ceiling);
+    ret |= write_reg(sensor->slv_addr, 0x3b, ceiling);
+    if (ret == 0) {
+        sensor->status.gainceiling = (int)val;
+        ESP_LOGD(TAG, "Set gain ceiling to: %d", ceiling);
+    }
+    return ret;
+}
+
+static int set_exposure_czone(sensor_t *sensor, int min, int max)
+{
+    // P1:0x12 = AEC upper brightness target, P1:0x13 = lower brightness target.
+    // Analogous to OV7670's AEW (upper) and AEB (lower) registers.
+    int ret = write_reg(sensor->slv_addr, 0xfe, 0x01); // page 1
+    ret |= write_reg(sensor->slv_addr, 0x12, (uint8_t)max);
+    ret |= write_reg(sensor->slv_addr, 0x13, (uint8_t)min);
+    return ret;
+}
+
+static int set_exposure_szone(sensor_t *sensor, int min, int max)
+{
+    // GC032A has no fast/slow AEC zone register equivalent to OV7670's VPT.
+    return 0;
+}
+
 static int get_reg(sensor_t *sensor, int reg, int mask)
 {
     int ret = 0;
@@ -282,6 +422,19 @@ static int set_reg(sensor_t *sensor, int reg, int mask, int value)
 
     } else {
         ret = write_reg(sensor->slv_addr, reg, value);
+    }
+    return ret;
+}
+
+static int set_streaming(sensor_t *sensor, int enable)
+{
+    int ret = 0;
+    // GC032A software standby register 0xF3:
+    // 0xFF = streaming enabled (normal operation)
+    // 0x00 = streaming disabled (software standby)
+    ret = write_reg(sensor->slv_addr, SYNC_OUTPUT, enable ? 0xFF : 0x00);
+    if (ret == 0) {
+        ESP_LOGD(TAG, "Set streaming to: %d", enable);
     }
     return ret;
 }
@@ -322,13 +475,8 @@ static int set_dummy(sensor_t *sensor, int val)
     ESP_LOGW(TAG, "Unsupported");
     return -1;
 }
-static int set_gainceiling_dummy(sensor_t *sensor, gainceiling_t val)
-{
-    ESP_LOGW(TAG, "Unsupported");
-    return -1;
-}
 
-int gc032a_detect(int slv_addr, sensor_id_t *id)
+int esp32_camera_gc032a_detect(int slv_addr, sensor_id_t *id)
 {
     if (GC032A_SCCB_ADDR == slv_addr) {
         uint8_t MIDL = SCCB_Read(slv_addr, SENSOR_ID_LOW);
@@ -336,6 +484,9 @@ int gc032a_detect(int slv_addr, sensor_id_t *id)
         uint16_t PID = MIDH << 8 | MIDL;
         if (GC032A_PID == PID) {
             id->PID = PID;
+            id->VER = 0;
+            id->MIDL = MIDL;
+            id->MIDH = MIDH;
             return PID;
         } else {
             ESP_LOGI(TAG, "Mismatch PID=0x%x", PID);
@@ -344,47 +495,69 @@ int gc032a_detect(int slv_addr, sensor_id_t *id)
     return 0;
 }
 
-int gc032a_init(sensor_t *sensor)
+int esp32_camera_gc032a_init(sensor_t *sensor)
 {
-    sensor->init_status = init_status;
+    // Set function pointers
     sensor->reset = reset;
+    sensor->init_status = init_status;
     sensor->set_pixformat = set_pixformat;
     sensor->set_framesize = set_framesize;
+    sensor->set_colorbar = set_colorbar;
+    sensor->set_whitebal = set_whitebal;
+    sensor->set_gain_ctrl = set_gain_ctrl;
+    sensor->set_exposure_ctrl = set_exposure_ctrl;
+    sensor->set_hmirror = set_hmirror;
+    sensor->set_vflip = set_vflip;
+    sensor->set_ae_level = set_ae_level;
+    sensor->get_agc_gain = get_agc_gain;
+    sensor->set_awb_gain = set_awb_gain;
+    sensor->set_gainceiling = set_gainceiling;
+
+    sensor->set_agc_gain = set_agc_gain;
+    sensor->get_ae_level = get_ae_level;
+
+    sensor->set_exposure_czone = set_exposure_czone;
+    sensor->set_exposure_szone = set_exposure_szone;
+
+    // not supported
     sensor->set_contrast = set_dummy;
     sensor->set_brightness = set_dummy;
     sensor->set_saturation = set_dummy;
-    sensor->set_sharpness = set_dummy;
-    sensor->set_denoise = set_dummy;
-    sensor->set_gainceiling = set_gainceiling_dummy;
     sensor->set_quality = set_dummy;
-    sensor->set_colorbar = set_colorbar;
-    sensor->set_whitebal = set_dummy;
-    sensor->set_gain_ctrl = set_dummy;
-    sensor->set_exposure_ctrl = set_dummy;
-    sensor->set_hmirror = set_hmirror;
-    sensor->set_vflip = set_vflip;
-
     sensor->set_aec2 = set_dummy;
-    sensor->set_awb_gain = set_dummy;
-    sensor->set_agc_gain = set_dummy;
     sensor->set_aec_value = set_dummy;
-
     sensor->set_special_effect = set_dummy;
     sensor->set_wb_mode = set_dummy;
-    sensor->set_ae_level = set_dummy;
-
     sensor->set_dcw = set_dummy;
     sensor->set_bpc = set_dummy;
     sensor->set_wpc = set_dummy;
-
     sensor->set_raw_gma = set_dummy;
     sensor->set_lenc = set_dummy;
+    sensor->set_sharpness = set_dummy;
+    sensor->set_denoise = set_dummy;
 
+    // register access
     sensor->get_reg = get_reg;
     sensor->set_reg = set_reg;
     sensor->set_res_raw = NULL;
     sensor->set_pll = NULL;
     sensor->set_xclk = NULL;
+
+    sensor->set_streaming = set_streaming;
+
+    // No autofocus support
+    sensor->af_is_supported = NULL;
+    sensor->af_init = NULL;
+    sensor->af_set_mode = NULL;
+    sensor->af_trigger = NULL;
+    sensor->af_get_status = NULL;
+    sensor->af_set_manual_position = NULL;
+
+    // Retrieve sensor's signature
+    sensor->id.MIDH = SCCB_Read(sensor->slv_addr, SENSOR_ID_HIGH);
+    sensor->id.MIDL = SCCB_Read(sensor->slv_addr, SENSOR_ID_LOW);
+    sensor->id.PID = (sensor->id.MIDH << 8 | sensor->id.MIDL);
+    sensor->id.VER = 0;
 
     ESP_LOGD(TAG, "GC032A Attached");
     return 0;
