@@ -265,6 +265,11 @@ static int set_agc_gain(sensor_t *sensor, int gain)
     // P0:0x70 Global_gain is a full 8-bit gain register (default 0x70).
     // P0:0x48 gain_code is only [3:0] (4-bit, 0-15) — used as a secondary multiplier.
     // We write Global_gain for the primary control.
+    //
+    // Note this is deliberately asymmetric with get_agc_gain(), which reads Auto_pregain while the
+    // AEC is running.  That mirrors the hardware: Global_gain is the manual multiplier, Auto_pregain
+    // is the AEC's own output.  Writing here is only meaningful with AEC disabled -- with it on, the
+    // AEC drives 0x71/0x72 and this register just scales whatever it decides.
     if (gain < 0)   gain = 0;
     if (gain > 255) gain = 255;
 
@@ -280,7 +285,20 @@ static int set_agc_gain(sensor_t *sensor, int gain)
 static int get_agc_gain(sensor_t *sensor)
 {
     write_reg(sensor->slv_addr, 0xfe, 0x00);
-    return read_reg(sensor->slv_addr, 0x70); // Global_gain, matches set_agc_gain
+    //
+    // Which register holds "the gain" depends on who is driving it:
+    //
+    //   AEC on  - P0:0x71 Auto_pregain is what the AEC actually applies, and it moves.  P0:0x70
+    //             Global_gain is a static multiplier the AEC never touches, so reading it reports
+    //             a constant (0x50, straight from the init blob) no matter what the sensor is
+    //             really doing.  cam_start_frame() calls this per frame to fill fb.gain, so
+    //             reading 0x70 made every frame in every event report the same meaningless value.
+    //   AEC off - 0x71 is frozen at whatever it last was; 0x70 is what set_agc_gain() wrote.
+    //
+    // Returning Auto_pregain under AEC also makes fb.gain directly comparable to the
+    // AEC_max_pre_dg_gain cap (P1:0x1f), which is how you tell that gain has hit its ceiling.
+    //
+    return read_reg(sensor->slv_addr, sensor->status.aec ? 0x71 : 0x70);
 }
 
 static int set_awb_gain(sensor_t *sensor, int gain)
